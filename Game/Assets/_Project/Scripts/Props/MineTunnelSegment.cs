@@ -17,6 +17,7 @@ namespace Ward0.Props
         [Header("Lamp")]
         [SerializeField] private Light lamp;
         [SerializeField] private Renderer bulb;
+        [SerializeField] private bool lampStartsOn = true;
         [SerializeField] private bool flicker = true;
         [SerializeField, Range(0f, 1f)] private float flickerAmount = 0.18f;
 
@@ -33,7 +34,14 @@ namespace Ward0.Props
         {
             _seed = Random.value * 100f;
             if (lamp != null) _lampBase = lamp.intensity;
-            if (bulb != null) { _bulbEmission = bulb.sharedMaterial.GetColor("_EmissionColor"); _mpb = new MaterialPropertyBlock(); }
+            EnsureBulb();
+            if (!lampStartsOn) SetLamp(false);
+        }
+
+        private void EnsureBulb()
+        {
+            if (_mpb != null || bulb == null) return;
+            _bulbEmission = bulb.sharedMaterial.GetColor("_EmissionColor"); _mpb = new MaterialPropertyBlock();
         }
 
         private void Update()
@@ -43,13 +51,15 @@ namespace Ward0.Props
             float drop = n > 0.84f ? Random.Range(0.3f, 0.75f) : 1f;
             float k = (1f - flickerAmount + flickerAmount * n) * drop;
             lamp.intensity = _lampBase * k;
-            if (bulb != null) { _mpb.SetColor("_EmissionColor", _bulbEmission * k); bulb.SetPropertyBlock(_mpb); }
+            EnsureBulb();
+            if (_mpb != null) { _mpb.SetColor("_EmissionColor", _bulbEmission * k); bulb.SetPropertyBlock(_mpb); }
         }
 
         public void SetLamp(bool on)
         {
             if (lamp != null) lamp.enabled = on;
-            if (bulb != null && _mpb != null) { _mpb.SetColor("_EmissionColor", on ? _bulbEmission : Color.black); bulb.SetPropertyBlock(_mpb); }
+            EnsureBulb();
+            if (_mpb != null) { _mpb.SetColor("_EmissionColor", on ? _bulbEmission : Color.black); bulb.SetPropertyBlock(_mpb); }
         }
     }
 }

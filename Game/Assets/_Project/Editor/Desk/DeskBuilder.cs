@@ -50,6 +50,7 @@ namespace Ward0.EditorTools
         }
 
         internal static Vector3 Origin = Vector3.zero;
+        internal static readonly HashSet<string> SavedMeshNames = new HashSet<string>();
         internal static void Add(Mesh mesh, Material mat, Vector3 pos, Quaternion rot = default)
         {
             if (rot.x == 0 && rot.y == 0 && rot.z == 0 && rot.w == 0) rot = Quaternion.identity;
@@ -68,7 +69,7 @@ namespace Ward0.EditorTools
             foreach (var d in new[] { Root, TexDir, MatDir, MeshDir })
                 Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
-            mats.Clear();
+            mats.Clear(); SavedMeshNames.Clear();
             cb = new Combiner();
 
             BuildMaterials();
@@ -160,6 +161,7 @@ namespace Ward0.EditorTools
 
             Emissive("ScreenXRay", Color.white * 0.2f, Color.white * 1.5f, TexKit.XRayScreen(TexDir), 0.85f);
             Emissive("ScreenBioscan", Color.white * 0.2f, Color.white * 1.5f, TexKit.BioscanScreen(TexDir), 0.85f);
+            TexKit.XRayScreen(TexDir, "Screen_XRay_Anomaly", true); TexKit.BioscanScreen(TexDir, "Screen_Bioscan_Anomaly", true);
             Emissive("LedGreen", new Color(0.02f, 0.1f, 0.02f), new Color(0.2f, 3f, 0.4f));
             Emissive("LedAmber", new Color(0.12f, 0.06f, 0.0f), new Color(3.2f, 1.4f, 0.1f));
             Emissive("LedRed", new Color(0.12f, 0.0f, 0.0f), new Color(3.2f, 0.15f, 0.1f));
@@ -249,7 +251,9 @@ namespace Ward0.EditorTools
         // separate (non-combined) objects --------------------------------------------------------
         internal static string SaveMesh(Mesh m, string name)
         {
-            m.name = name;
+            string unique = name; int n = 2;
+            while (!SavedMeshNames.Add(MeshDir + "/" + unique)) unique = name + "_" + n++;
+            m.name = unique; name = unique;
             string p = MeshDir + "/" + name + ".asset";
             AssetDatabase.DeleteAsset(p);
             AssetDatabase.CreateAsset(m, p);
@@ -500,7 +504,7 @@ namespace Ward0.EditorTools
             var pos = new Vector3(-0.01f, 0.825f, 0.30f); var rot = Quaternion.Euler(14f, 0, 0);
             Add(MeshKit.Box(new Vector3(0.96f, 0.04f, 0.20f), 0.01f), M("DarkIron"), pos, rot);
             Add(MeshKit.Box(new Vector3(0.92f, 0.008f, 0.17f), 0.003f), M("Gunmetal"), pos + rot * new Vector3(0, 0.021f, 0), rot);
-            string[] names = { "X-RAY", "BIOSCAN", "ANALYSIS", "LOG", "POWER", "" };
+            string[] names = { "X-RAY", "BIOSCAN", "ANALYSIS", "LOG", "POWER", "CLEAR" };
             float[] tx = { -0.375f, -0.25f, -0.12f, 0.01f, 0.14f, 0.27f };
             for (int i = 0; i < 6; i++)
             {
@@ -513,7 +517,7 @@ namespace Ward0.EditorTools
                 var arm = MeshKit.Cylinder(0.0045f, 0.055f, 10, 0.001f);
                 Part("ToggleArm_" + i, piv.transform, arm, "Chrome", new Vector3(0, 0.0275f, 0));
                 Part("ToggleKnob_" + i, piv.transform, MeshKit.Sphere(0.0085f, 12, 8), "BlackPlastic", new Vector3(0, 0.058f, 0));
-                var col = piv.AddComponent<CapsuleCollider>(); col.center = new Vector3(0, 0.03f, 0); col.radius = 0.014f; col.height = 0.08f;
+                var col = piv.AddComponent<CapsuleCollider>(); col.center = new Vector3(0, 0.035f, 0); col.radius = 0.034f; col.height = 0.12f;
                 if (names[i] != "") Label(names[i], pos + rot * new Vector3(tx[i] + 0.01f, 0.026f, 0.07f), rot.eulerAngles + new Vector3(-90, 0, 0), 0.0105f, null, 0.15f, TextAlignmentOptions.Center, FontStyles.Bold, new Color(0.78f, 0.78f, 0.72f, 0.95f), 3f);
             }
             RivetLine(pos + rot * new Vector3(-0.45f, 0.022f, 0.085f), pos + rot * new Vector3(0.45f, 0.022f, 0.085f), 12, rot * Vector3.up);

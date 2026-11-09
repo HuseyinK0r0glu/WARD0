@@ -33,7 +33,7 @@ namespace Ward0.EditorTools
             MatDir = TRoot + "/Materials"; MeshDir = TRoot + "/Meshes";
             foreach (var d in new[] { TRoot, TexDir, MatDir, MeshDir }) Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
-            mats.Clear(); mirrored.Clear(); Origin = Vector3.zero; rng = new System.Random(20261109);
+            mats.Clear(); mirrored.Clear(); SavedMeshNames.Clear(); Origin = Vector3.zero; rng = new System.Random(20261109);
 
             BuildTunnelMaterials();
 

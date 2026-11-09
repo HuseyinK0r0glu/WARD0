@@ -34,7 +34,7 @@ namespace Ward0.EditorTools
             MatDir = DoorRoot + "/Materials"; MeshDir = DoorRoot + "/Meshes";
             foreach (var d in new[] { DoorRoot, TexDir, MatDir, MeshDir }) Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
-            mats.Clear(); mirrored.Clear();
+            mats.Clear(); mirrored.Clear(); SavedMeshNames.Clear();
             Origin = Vector3.zero;
 
             BuildDoorMaterials();

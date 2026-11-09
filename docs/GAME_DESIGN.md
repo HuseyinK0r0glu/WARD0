@@ -111,3 +111,38 @@ Comparable titles: *The Mortuary Assistant* ($9.3M+ gross), *Papers, Please*, *C
 - Win/lose conditions and ending(s).
 - Final asset-pack list.
 - Reconcile the competitor revenue figures between the PDF and the deck.
+
+## 11. Playable map (`Game/Assets/_Project/Scenes/Ward0_Map.unity`)
+
+Built entirely from the procedural props via **Ward0 > Build Game Map** (order: Build Quarantine Desk, Build Map Props, Build Game Map).
+
+### Layout
+```
+ UPPER CHECKPOINT (y = +30)                         MINE (y = 0), 6 chambers + 18 tunnel segments
+ +--------+------+----------+                       (N1)=====(N0)=====(N4)
+ | ELEV.  | BOOTH|  CELL    |                        ||       || \    ||
+ | shaft  | desk |  (miner) |                       (N2)=====(N3)=====(N5)  <- gas chamber
+ +--------+  AIRLOCK                                  spur A    N3 hub     spur C (gas)
+                                                      spurs B and D: dead ends with batteries
+```
+- **Upper:** booth with the triage desk, observation glass onto the quarantine cell (incinerator grate, miner spawn), airlock with two blast doors, elevator.
+- **Mine:** N0 landing (elevator), N1 breaker hall A, N2 pump house (coolant valve), N3 central hub (pillars, carts), N4 east hall, N5 gas chamber (breaker B). Every chamber has its own landmarks (chalk marks, torches, minecarts, stalactites) for memory navigation. Four dead-end spurs hold spare batteries.
+
+### Shift flow
+1. **Triage (3 miners):** power the desk, run X-ray / bioscan / analysis (infected miners show anomalous scans and swing the gauge needles into the red), then CLEAR (toggle) or INCINERATE (lever). Clear an infected miner = fatal ambush. Incinerate a healthy one = permanent sanity loss.
+2. **Breakdown:** alarm; the elevator unlocks.
+3. **Mine:** repair 3 systems (hold E, loud) inside the reactor timer. Each repair vents a steam burst that blinds you while the corridor behind you collapses (graph-checked so you are never trapped).
+4. **Return** to the lower elevator to finish the shift.
+
+### Difficulty levers
+- Reactor timer (default 600 s), 3 holds-to-repair that make noise, patrols that scale 1 -> 3 with each repair, corridor collapses that force new routes.
+- Patrols: authored graph walk (no NavMesh); detection by FOV + line of sight; faster in light / sprinting, slower crouched or behind cover; noise (sprint, repairs, doors) draws them. A full detection meter is fatal. They spawn and despawn out of your view.
+- Darkness: roughly a quarter of tunnel lamps are off and the spurs are unlit; the torch has a limited battery.
+- Dual sanity: permanent baseline + temporary gas decay (gas chamber and spur C). Sanity tiers add vignette, grain, chromatic aberration, sway, whispers, slower movement.
+- Stamina limits sprinting; crouch + hide zones behind minecarts.
+
+### Controls
+WASD move, Shift sprint, Ctrl / C crouch, E interact (hold to repair), F torch, R restart after a result screen, F1 debug overlay, Esc releases the mouse.
+
+### Where to tune
+`ShiftManager` (miners, repairs, timer, infected pattern), `SanitySystem` (loss and drain rates), `PatrolEnemy` (speed, view range, detect time), `EnemyDirector` (spawn interval and distance), `PlayerController` (speeds, stamina), `FlashlightController` (battery).

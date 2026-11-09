@@ -243,7 +243,7 @@ namespace Ward0.EditorTools
                 }
         }
 
-        public static Texture2D XRayScreen(string dir)
+        public static Texture2D XRayScreen(string dir, string name = "Screen_XRay", bool anomaly = false)
         {
             int W = 512, H = 384;
             var c = new Canvas(W, H, new Color(0, 0, 0, 1f));
@@ -288,6 +288,17 @@ namespace Ward0.EditorTools
             for (int v = 0; v < 18; v++) c.Dot(cx, cy + 126f - v * 11.5f, new Color(0.18f, 0, 0, 1), 4.2f, true);
             c.Line(cx, cy + 132f, cx, cy + 72f, new Color(-0.12f, 0, 0, 1), 3.5f, true);
 
+            if (anomaly)
+            {
+                // dense masses and foreign growth in the lungs, mottled with branching tissue
+                for (int k = 0; k < 7; k++)
+                {
+                    float bx0 = cx + (k % 2 == 0 ? -1 : 1) * (28f + (k * 11) % 40), by0 = cy + 40f - k * 18f;
+                    for (int y = (int)by0 - 22; y < by0 + 22; y++) for (int x = (int)bx0 - 22; x < bx0 + 22; x++)
+                    { float d = Mathf.Sqrt((x - bx0) * (x - bx0) + (y - by0) * (y - by0)) / 20f; if (d < 1f && x > 0 && y > 0 && x < W && y < H) { var pp = c.Px[y * W + x]; c.Px[y * W + x] = new Color(Mathf.Clamp01(pp.r + 0.32f * (1f - d)), 0, 0, 1); } }
+                    for (int b = 0; b < 3; b++) c.Line(bx0, by0, bx0 + Mathf.Cos(k * 2f + b * 2.1f) * 30f, by0 + Mathf.Sin(k * 2f + b * 2.1f) * 30f, new Color(0.22f, 0, 0, 1), 1.6f, true);
+                }
+            }
             // colour map (density -> cyan/white film)
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++)
@@ -309,15 +320,15 @@ namespace Ward0.EditorTools
                 float x0 = k % 2 == 0 ? 24 : 346, y0 = k < 2 ? 24 : H - 36; float sx = k % 2 == 0 ? 1 : -1, sy = k < 2 ? 1 : -1;
                 c.Line(x0, y0, x0 + 18 * sx, y0, line, 1.2f); c.Line(x0, y0, x0, y0 + 18 * sy, line, 1.2f);
             }
-            CrtFinish(c, new Color(0.85f, 1f, 1f), 3);
-            return Save(dir, "Screen_XRay", c.Px, W, H, false, false);
+            CrtFinish(c, anomaly ? new Color(1f, 0.82f, 0.9f) : new Color(0.85f, 1f, 1f), 3);
+            return Save(dir, name, c.Px, W, H, false, false);
         }
 
-        public static Texture2D BioscanScreen(string dir)
+        public static Texture2D BioscanScreen(string dir, string name = "Screen_Bioscan", bool anomaly = false)
         {
             int W = 512, H = 384;
             var c = new Canvas(W, H, new Color(0.01f, 0.05f, 0.07f, 1f));
-            var cy1 = new Color(0.35f, 0.9f, 1f, 0.9f); var green = new Color(0.25f, 1f, 0.5f, 1f);
+            var cy1 = anomaly ? new Color(1f, 0.35f, 0.3f, 0.9f) : new Color(0.35f, 0.9f, 1f, 0.9f); var green = anomaly ? new Color(1f, 0.25f, 0.2f, 1f) : new Color(0.25f, 1f, 0.5f, 1f);
             // left: wire-frame body scan
             c.FillRect(18, 18, 190, H - 28, new Color(0.02f, 0.12f, 0.16f, 0.9f));
             for (int g = 0; g < 14; g++) { c.Line(18 + g * 12.4f, 18, 18 + g * 12.4f, H - 28, cy1 * 0.18f, 1f); }
@@ -339,7 +350,7 @@ namespace Ward0.EditorTools
                 {
                     float t = (x - 214) / 134f; float ph = (t * 4f + k * 0.37f) % 1f;
                     float wave = ph > 0.45f && ph < 0.5f ? 26f : (ph > 0.5f && ph < 0.54f ? -12f : (ph > 0.62f && ph < 0.74f ? 5f * Mathf.Sin((ph - 0.62f) / 0.12f * Mathf.PI) : 0f));
-                    float yy = y0 + wave + (Hash(x, k, 4) - 0.5f) * 1.2f;
+                    float yy = y0 + wave * (anomaly ? 1.6f : 1f) + (Hash(x, k, 4) - 0.5f) * (anomaly ? 9f : 1.2f);
                     c.Line(x - 1, prev, x, yy, green, 1.1f); prev = yy;
                 }
             }
@@ -366,8 +377,8 @@ namespace Ward0.EditorTools
                 }
             // small status bars
             for (int k = 0; k < 5; k++) c.FillRect(212, 36 + k * 11, 212 + 30 + (int)(Hash(k, 1, 2) * 60), 41 + k * 11, new Color(0.2f, 0.9f, 0.5f, 0.55f));
-            CrtFinish(c, new Color(0.85f, 1f, 1f), 9);
-            return Save(dir, "Screen_Bioscan", c.Px, W, H, false, false);
+            CrtFinish(c, anomaly ? new Color(1f, 0.8f, 0.8f) : new Color(0.85f, 1f, 1f), 9);
+            return Save(dir, name, c.Px, W, H, false, false);
         }
 
         // ---------- gauge face ----------
@@ -632,6 +643,48 @@ namespace Ward0.EditorTools
                     mg[y * n + x] = new Color(0f, 0f, 0f, 0.1f + 0.08f * grain);
                 }
             return FinishSurface(dir, name, n, alb, h, mg, 2.2f);
+        }
+
+
+        // ---------- gameplay-map textures ----------
+        public static Texture2D SoftPuff(string dir)
+        {
+            int n = 256; var px = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (x + 0.5f) / n * 2f - 1f, v = (y + 0.5f) / n * 2f - 1f; float d = Mathf.Sqrt(u * u + v * v);
+                    float noise = Fbm((x + 0.5f) / n, (y + 0.5f) / n, 5, 4, 12);
+                    float a = Mathf.Clamp01(1f - d) * Mathf.Clamp01(0.45f + noise * 1.1f); a = a * a * (3f - 2f * a);
+                    px[y * n + x] = new Color(1f, 1f, 1f, a);
+                }
+            return Save(dir, "SoftPuff", px, n, n, false, false, true);
+        }
+
+        /// <summary>kind: 0 tally marks, 1 arrow, 2 X, 3 circled dot, 4 triangle, 5 spiral</summary>
+        public static Texture2D Chalk(string dir, string name, int kind)
+        {
+            int n = 256; var c = new Canvas(n, n, new Color(1f, 1f, 1f, 0f)); var w = new Color(0.9f, 0.9f, 0.85f, 1f); float lw = 5.5f;
+            switch (kind)
+            {
+                case 0:
+                    for (int g = 0; g < 2; g++) { float oy = 150 - g * 90; for (int i = 0; i < 4; i++) c.Line(40 + i * 28 + g * 6, oy + 30, 44 + i * 28 + g * 6, oy - 30, w, lw); c.Line(30 + g * 6, oy + 6, 150 + g * 6, oy - 12, w, lw); }
+                    c.Line(180, 150, 184, 90, w, lw); c.Line(206, 150, 210, 90, w, lw); break;
+                case 1: c.Line(30, 128, 220, 128, w, lw + 1); c.Line(220, 128, 160, 190, w, lw + 1); c.Line(220, 128, 160, 66, w, lw + 1); break;
+                case 2: c.Line(50, 60, 206, 200, w, lw + 2); c.Line(206, 60, 50, 200, w, lw + 2); break;
+                case 3: c.Ring(128, 128, 82, w, lw + 1); c.Dot(128, 128, w, 12); break;
+                case 4: c.Line(40, 50, 216, 50, w, lw); c.Line(216, 50, 128, 210, w, lw); c.Line(128, 210, 40, 50, w, lw); c.Line(128, 100, 128, 150, w, lw); c.Dot(128, 80, w, 6); break;
+                default:
+                    for (int i = 0; i < 260; i++) { float a = i * 0.09f; float r = 6 + i * 0.33f; c.Dot(128 + Mathf.Cos(a) * r, 128 + Mathf.Sin(a) * r, w, 3.2f); }
+                    break;
+            }
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int i = y * n + x; float wear = SS(0.25f, 0.55f, Fbm(x / (float)n, y / (float)n, 24, 3, 9) + Hash(x, y, 4) * 0.35f);
+                    var p = c.Px[i]; c.Px[i] = new Color(p.r, p.g, p.b, p.a * wear * 0.9f);
+                }
+            return Save(dir, name, c.Px, n, n, false, false, true);
         }
 
         // ---------- IO ----------

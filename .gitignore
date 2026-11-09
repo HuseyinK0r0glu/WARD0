@@ -60,3 +60,6 @@ desktop.ini
 
 # Office temp/lock files
 ~$*
+
+# local dev/test scripts (run through the Unity CLI, not part of the game)
+DevScripts/

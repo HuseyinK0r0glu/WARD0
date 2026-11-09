@@ -48,6 +48,12 @@ Package `com.unity.pipeline` connects the CLI to the open editor. Prefer the CLI
 ## Procedural art pipeline
 Props are built from code, not hand-modelled. Editor scripts live in `Game/Assets/_Project/Editor/Desk/` (`MeshKit`, `TexKit`, `DeskBuilder`, `ShowcaseBuilder`). Menu `Ward0 → Build Quarantine Desk` regenerates meshes, textures, materials and the prefab; `Ward0 → Build Desk Showcase` rebuilds the review scene. Change the builder, not the generated assets. Designs are authored front-toward +Z and mirrored in Z at build time (Unity is left-handed), so the finished prop faces -Z. Review with `unity command capture game_view --source camera --output-path <file>` and look at the image before calling a prop done. Reference art lives outside the repo (user's Downloads).
 
+## Gameplay layer (`Game/Assets/_Project/Scripts/Gameplay`, namespace `Ward0.Gameplay`)
+- `ShiftManager` is the single state machine (Triage > Descent > Mine > Return > Complete/Failed). `MineMap` / `MineNode` / `MineCorridor` is the chamber graph used by patrols and corridor swaps. `PatrolEnemy` + `EnemyDirector` are deterministic graph walkers (no NavMesh). Interaction goes through `Interactable` + `Interactor`. Sanity lives in `SanitySystem`. Input uses the new Input System directly (`Keyboard.current`).
+- The level scene is **generated**: run `Ward0 > Build Quarantine Desk`, then `Build Map Props`, then `Build Game Map`. Do not hand-edit `Ward0_Map.unity`; change `MapBuilder` / `PropKit` and rebuild.
+- Testing: enter play mode through the CLI (`unity command editor.playmode start`), turn on `editor.playmode set_run_in_background true` so the editor ticks while unfocused, and drive the game with throwaway scripts kept OUTSIDE `Assets/` (e.g. `Game/DevScripts/`, git-ignored) via `unity command script run --file ... --entry Class.Method`. Editing anything under `Assets/` while in play mode triggers a domain reload that nulls statics and breaks the run.
+- Player is on the Ignore Raycast layer so interaction rays pass through it; enemy line-of-sight uses all layers.
+
 ## C# conventions
 - Namespace `Ward0.<Area>` (e.g. `Ward0.Sanity`). One public type per file, filename = type name.
 - PascalCase types/methods/properties; `_camelCase` private fields; `camelCase` locals/params. Use `[SerializeField] private` rather than public fields.

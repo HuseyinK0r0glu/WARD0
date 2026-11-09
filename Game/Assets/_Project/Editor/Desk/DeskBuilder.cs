@@ -16,22 +16,22 @@ namespace Ward0.EditorTools
     {
         const string Root = "Assets/_Project/Art/Desk";
         const string TexDir = Root + "/Textures";
-        const string MatDir = Root + "/Materials";
-        const string MeshDir = Root + "/Meshes";
+        internal static string MatDir = Root + "/Materials";
+        internal static string MeshDir = Root + "/Meshes";
         const string PrefabPath = Root + "/QuarantineDesk.prefab";
 
         // reference-art pixel -> metres
         const float S = 0.00163f;
-        static float X(float px) => (px - 765f) * S;
+        internal static float X(float px) => (px - 765f) * S;
 
         // The design is authored with the front toward +Z (right-handed thinking: viewer at +Z sees +X on the right).
         // Unity is left-handed, so everything is mirrored through the XY plane at build time: the desk front ends up
         // facing -Z, and a viewer standing in front sees the layout exactly like the reference art.
-        static Vector3 Zm(Vector3 v) => new Vector3(v.x, v.y, -v.z);
-        static Quaternion ZQ(Quaternion q) => new Quaternion(-q.x, -q.y, q.z, q.w);
-        static readonly Dictionary<Mesh, Mesh> mirrored = new Dictionary<Mesh, Mesh>();
+        internal static Vector3 Zm(Vector3 v) => new Vector3(v.x, v.y, -v.z);
+        internal static Quaternion ZQ(Quaternion q) => new Quaternion(-q.x, -q.y, q.z, q.w);
+        internal static readonly Dictionary<Mesh, Mesh> mirrored = new Dictionary<Mesh, Mesh>();
 
-        static Mesh Mirror(Mesh src)
+        internal static Mesh Mirror(Mesh src)
         {
             if (mirrored.TryGetValue(src, out var done)) return done;
             var m = new Mesh { name = src.name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
@@ -49,20 +49,22 @@ namespace Ward0.EditorTools
             return m;
         }
 
-        static void Add(Mesh mesh, Material mat, Vector3 pos, Quaternion rot = default)
+        internal static Vector3 Origin = Vector3.zero;
+        internal static void Add(Mesh mesh, Material mat, Vector3 pos, Quaternion rot = default)
         {
             if (rot.x == 0 && rot.y == 0 && rot.z == 0 && rot.w == 0) rot = Quaternion.identity;
-            cb.Add(Mirror(mesh), mat, Zm(pos), ZQ(rot));
+            cb.Add(Mirror(mesh), mat, Zm(pos - Origin), ZQ(rot));
         }
 
-        static Combiner cb;
-        static Transform root;
-        static readonly Dictionary<string, Material> mats = new Dictionary<string, Material>();
-        static readonly Color Paint = new Color(0.66f, 0.66f, 0.6f, 0.92f);
+        internal static Combiner cb;
+        internal static Transform root;
+        internal static readonly Dictionary<string, Material> mats = new Dictionary<string, Material>();
+        internal static readonly Color Paint = new Color(0.66f, 0.66f, 0.6f, 0.92f);
 
         [MenuItem("Ward0/Build Quarantine Desk")]
         public static void Build()
         {
+            MatDir = Root + "/Materials"; MeshDir = Root + "/Meshes";
             foreach (var d in new[] { Root, TexDir, MatDir, MeshDir })
                 Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
@@ -106,7 +108,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ materials
-        static Material Mk(string name, Color col, float metal, float smooth, Texture albedo = null, Texture normal = null, Texture metalGloss = null, float normalScale = 1f)
+        internal static Material Mk(string name, Color col, float metal, float smooth, Texture albedo = null, Texture normal = null, Texture metalGloss = null, float normalScale = 1f)
         {
             var m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
             m.SetColor("_BaseColor", col);
@@ -122,7 +124,7 @@ namespace Ward0.EditorTools
             return m;
         }
 
-        static Material Emissive(string name, Color baseCol, Color emission, Texture map = null, float smooth = 0.6f)
+        internal static Material Emissive(string name, Color baseCol, Color emission, Texture map = null, float smooth = 0.6f)
         {
             var m = Mk(name, baseCol, 0f, smooth, map);
             m.EnableKeyword("_EMISSION");
@@ -132,7 +134,7 @@ namespace Ward0.EditorTools
             return m;
         }
 
-        static Material Cutout(string name, Texture tex, Color tint)
+        internal static Material Cutout(string name, Texture tex, Color tint)
         {
             var m = Mk(name, tint, 0.3f, 0.25f, tex);
             m.SetFloat("_AlphaClip", 1f); m.SetFloat("_Cutoff", 0.5f);
@@ -142,7 +144,7 @@ namespace Ward0.EditorTools
             return m;
         }
 
-        static void BuildMaterials()
+        internal static void BuildMaterials()
         {
             var set = TexKit.BuildMetal(TexDir, 1024);
             Mk("Gunmetal", Color.white, 1f, 1f, set.Gun, set.Normal, set.MetalGloss, 0.8f);
@@ -173,38 +175,38 @@ namespace Ward0.EditorTools
             Mk("WarnYellow", new Color(0.7f, 0.55f, 0.08f), 0.2f, 0.35f);
         }
 
-        static Material M(string n) => mats[n];
+        internal static Material M(string n) => mats[n];
 
         // ============================================================ helpers
-        static void Put(Mesh m, string mat, Vector3 pos, Vector3? euler = null)
+        internal static void Put(Mesh m, string mat, Vector3 pos, Vector3? euler = null)
             => Add(m, M(mat), pos, Quaternion.Euler(euler ?? Vector3.zero));
 
-        static void Box(string mat, Vector3 c, Vector3 size, float bevel = 0.01f, Vector3? euler = null)
+        internal static void Box(string mat, Vector3 c, Vector3 size, float bevel = 0.01f, Vector3? euler = null)
             => Put(MeshKit.Box(size, bevel, 1f), mat, c, euler);
 
-        static void Cyl(string mat, Vector3 c, float r, float h, Vector3? euler = null, int seg = 24, float bevel = 0.003f)
+        internal static void Cyl(string mat, Vector3 c, float r, float h, Vector3? euler = null, int seg = 24, float bevel = 0.003f)
             => Put(MeshKit.Cylinder(r, h, seg, bevel), mat, c, euler);
 
-        static Mesh _rivet;
-        static Mesh RivetMesh => _rivet != null ? _rivet : (_rivet = MeshKit.Cylinder(0.0075f, 0.007f, 10, 0.002f));
+        internal static Mesh _rivet;
+        internal static Mesh RivetMesh => _rivet != null ? _rivet : (_rivet = MeshKit.Cylinder(0.0075f, 0.007f, 10, 0.002f));
 
-        static void Rivet(Vector3 pos, Vector3 normal, string mat = "DarkIron")
+        internal static void Rivet(Vector3 pos, Vector3 normal, string mat = "DarkIron")
             => Add(RivetMesh, M(mat), pos, Quaternion.FromToRotation(Vector3.up, normal));
 
         /// <summary>Row of rivets along a line on a face.</summary>
-        static void RivetLine(Vector3 a, Vector3 b, int count, Vector3 normal, string mat = "DarkIron")
+        internal static void RivetLine(Vector3 a, Vector3 b, int count, Vector3 normal, string mat = "DarkIron")
         {
             for (int i = 0; i < count; i++) Rivet(Vector3.Lerp(a, b, count == 1 ? 0.5f : (float)i / (count - 1)) + normal * 0.0035f, normal, mat);
         }
 
-        static void RivetRect(Vector3 center, float w, float h, int nx, int ny, Vector3 normal, Vector3 right, Vector3 up, string mat = "DarkIron")
+        internal static void RivetRect(Vector3 center, float w, float h, int nx, int ny, Vector3 normal, Vector3 right, Vector3 up, string mat = "DarkIron")
         {
             Vector3 bl = center - right * w / 2 - up * h / 2, br = center + right * w / 2 - up * h / 2, tl = center - right * w / 2 + up * h / 2, tr = center + right * w / 2 + up * h / 2;
             RivetLine(bl, br, nx, normal, mat); RivetLine(tl, tr, nx, normal, mat);
             if (ny > 2) { RivetLine(Vector3.Lerp(bl, tl, 1f / (ny - 1)), Vector3.Lerp(bl, tl, (ny - 2f) / (ny - 1)), ny - 2, normal, mat); RivetLine(Vector3.Lerp(br, tr, 1f / (ny - 1)), Vector3.Lerp(br, tr, (ny - 2f) / (ny - 1)), ny - 2, normal, mat); }
         }
 
-        static Mesh ScreenMesh(float w, float h, float bulge, int nx = 14, int ny = 10)
+        internal static Mesh ScreenMesh(float w, float h, float bulge, int nx = 14, int ny = 10)
         {
             var m = new Mesh { name = "ScreenBulge" };
             var v = new Vector3[(nx + 1) * (ny + 1)]; var uv = new Vector2[v.Length]; var n = new Vector3[v.Length];
@@ -229,7 +231,7 @@ namespace Ward0.EditorTools
             m.RecalculateBounds(); return m;
         }
 
-        static Mesh DiscMesh(float r, int seg = 40)
+        internal static Mesh DiscMesh(float r, int seg = 40)
         {
             var m = new Mesh { name = "Disc" };
             var v = new List<Vector3> { Vector3.zero }; var uv = new List<Vector2> { new Vector2(0.5f, 0.5f) }; var n = new List<Vector3> { Vector3.forward };
@@ -245,7 +247,7 @@ namespace Ward0.EditorTools
         }
 
         // separate (non-combined) objects --------------------------------------------------------
-        static string SaveMesh(Mesh m, string name)
+        internal static string SaveMesh(Mesh m, string name)
         {
             m.name = name;
             string p = MeshDir + "/" + name + ".asset";
@@ -254,7 +256,7 @@ namespace Ward0.EditorTools
             return p;
         }
 
-        static GameObject Obj(string name, Transform parent, Vector3 pos, Vector3? euler = null)
+        internal static GameObject Obj(string name, Transform parent, Vector3 pos, Vector3? euler = null)
         {
             var g = new GameObject(name);
             g.transform.SetParent(parent != null ? parent : root, false);
@@ -262,7 +264,7 @@ namespace Ward0.EditorTools
             return g;
         }
 
-        static MeshRenderer Part(string name, Transform parent, Mesh mesh, string mat, Vector3 pos, Vector3? euler = null)
+        internal static MeshRenderer Part(string name, Transform parent, Mesh mesh, string mat, Vector3 pos, Vector3? euler = null)
         {
             var g = Obj(name, parent, pos, euler);
             mesh = Mirror(mesh); SaveMesh(mesh, "Part_" + name);
@@ -271,7 +273,7 @@ namespace Ward0.EditorTools
             return r;
         }
 
-        static TextMeshPro Label(string text, Vector3 pos, Vector3 euler, float size, Transform parent = null, float width = 0.5f, TextAlignmentOptions align = TextAlignmentOptions.Center,
+        internal static TextMeshPro Label(string text, Vector3 pos, Vector3 euler, float size, Transform parent = null, float width = 0.5f, TextAlignmentOptions align = TextAlignmentOptions.Center,
                                  FontStyles style = FontStyles.Bold, Color? col = null, float spacing = 6f)
         {
             var g = Obj("Label_" + (text.Length > 14 ? text.Substring(0, 14) : text).Replace("\n", " "), parent, pos, euler);
@@ -288,7 +290,7 @@ namespace Ward0.EditorTools
         // ============================================================ structure
         const float TopY = 0.80f;
 
-        static Transform BuildStructure()
+        internal static Transform BuildStructure()
         {
             // tabletop slab + underside apron
             Box("Gunmetal", new Vector3(0, 0.76f, 0), new Vector3(2.42f, 0.08f, 0.92f), 0.014f);
@@ -352,7 +354,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ monitors
-        static void BuildMonitors(out Renderer xray, out Renderer bio)
+        internal static void BuildMonitors(out Renderer xray, out Renderer bio)
         {
             // riser deck the monitors sit on
             Box("Gunmetal", new Vector3(0, 0.89f, -0.2f), new Vector3(1.48f, 0.18f, 0.5f), 0.016f);
@@ -430,7 +432,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ gauges, lights, speaker, status panel
-        static void BuildGaugesAndPanels(out List<Renderer> leds)
+        internal static void BuildGaugesAndPanels(out List<Renderer> leds)
         {
             leds = new List<Renderer>();
             // tilted gauge console in front of monitors
@@ -493,7 +495,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ toggles (interactive pivots)
-        static void BuildToggles()
+        internal static void BuildToggles()
         {
             var pos = new Vector3(-0.01f, 0.825f, 0.30f); var rot = Quaternion.Euler(14f, 0, 0);
             Add(MeshKit.Box(new Vector3(0.96f, 0.04f, 0.20f), 0.01f), M("DarkIron"), pos, rot);
@@ -518,7 +520,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ incinerate lever
-        static Transform BuildIncinerator()
+        internal static Transform BuildIncinerator()
         {
             // heavy machinery behind the red unit
             Box("Gunmetal", new Vector3(1.06f, 0.95f, -0.12f), new Vector3(0.30f, 0.30f, 0.44f), 0.014f);
@@ -551,7 +553,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ left side: crate, clipboard, mug, cables
-        static void BuildLeftSide()
+        internal static void BuildLeftSide()
         {
             // quarantine crate
             Box("Gunmetal", new Vector3(-1.045f, 0.975f, -0.10f), new Vector3(0.38f, 0.34f, 0.38f), 0.018f);
@@ -585,7 +587,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ under desk
-        static void BuildUnderDesk()
+        internal static void BuildUnderDesk()
         {
             // junction boxes under the desk, with warning triangles
             Box("DarkIron", new Vector3(-0.38f, 0.60f, -0.28f), new Vector3(0.22f, 0.14f, 0.12f), 0.012f);
@@ -612,7 +614,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ caged lamp
-        static Light BuildLamp()
+        internal static Light BuildLamp()
         {
             var p = new Vector3(-0.60f, 1.585f, -0.05f);
             Box("DarkIron", p + new Vector3(0, 0.012f, 0), new Vector3(0.14f, 0.024f, 0.14f), 0.008f);
@@ -636,7 +638,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ finalize
-        static void BakeCombined()
+        internal static void BakeCombined()
         {
             var body = Obj("Body", root, Vector3.zero);
             foreach (var kv in cb.Bake("Desk"))
@@ -648,10 +650,10 @@ namespace Ward0.EditorTools
             }
         }
 
-        static void AddColliders()
+        internal static void AddColliders()
         {
             var cols = Obj("Colliders", root, Vector3.zero);
-            void C(Vector3 c, Vector3 s) { var b = cols.AddComponent<BoxCollider>(); b.center = c; b.size = s; }
+            void C(Vector3 c, Vector3 s) { var b = cols.AddComponent<BoxCollider>(); b.center = Zm(c); b.size = s; }
             C(new Vector3(0, 0.76f, 0), new Vector3(2.42f, 0.08f, 0.92f));
             C(new Vector3(-0.90f, 0.36f, 0.02f), new Vector3(0.64f, 0.72f, 0.86f));
             C(new Vector3(0.90f, 0.36f, 0.02f), new Vector3(0.64f, 0.72f, 0.86f));

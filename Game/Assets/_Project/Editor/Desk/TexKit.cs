@@ -49,18 +49,18 @@ namespace Ward0.EditorTools
         // ---------- worn metal set ----------
         public sealed class MetalSet
         {
-            public Texture2D Gun, Dark, Red, Normal, MetalGloss;
+            public Texture2D Gun, Dark, Red, Yellow, Normal, MetalGloss;
         }
 
-        public static MetalSet BuildMetal(string dir, int size = 1024)
+        public static MetalSet BuildMetal(string dir, int size = 1024, string prefix = "Metal", float rustBias = 0f)
         {
             int n = size;
             var height = new float[n * n];
             var rust = new float[n * n];
             var scratch = new float[n * n];
             var grime = new float[n * n];
-            var cols = new Color[3][];
-            for (int i = 0; i < 3; i++) cols[i] = new Color[n * n];
+            var cols = new Color[4][];
+            for (int i = 0; i < 4; i++) cols[i] = new Color[n * n];
             var mg = new Color[n * n];
 
             for (int y = 0; y < n; y++)
@@ -74,7 +74,7 @@ namespace Ward0.EditorTools
                     float speck = Hash(x, y, 5);
 
                     // rust blooms: thresholded low-freq noise, broken up by mid-freq
-                    float r = SS(0.50f, 0.70f, big * 0.7f + mid * 0.5f - 0.14f);
+                    float r = SS(0.50f - rustBias, 0.70f - rustBias, big * 0.7f + mid * 0.5f - 0.14f);
                     r = Mathf.Clamp01(r * (0.65f + 0.7f * fine));
                     // pitting / speckled rust
                     float pits = SS(0.62f, 0.8f, fine) * 0.6f;
@@ -97,6 +97,7 @@ namespace Ward0.EditorTools
             Color gunA = new Color(0.105f, 0.105f, 0.10f), gunB = new Color(0.20f, 0.195f, 0.18f);
             Color darkA = new Color(0.055f, 0.055f, 0.052f), darkB = new Color(0.125f, 0.12f, 0.11f);
             Color redA = new Color(0.36f, 0.035f, 0.03f), redB = new Color(0.55f, 0.07f, 0.05f);
+            Color yelA = new Color(0.50f, 0.37f, 0.04f), yelB = new Color(0.72f, 0.56f, 0.09f);
             Color rustA = new Color(0.22f, 0.095f, 0.04f), rustB = new Color(0.40f, 0.19f, 0.065f), rustDeep = new Color(0.10f, 0.045f, 0.022f);
 
             for (int y = 0; y < n; y++)
@@ -108,13 +109,13 @@ namespace Ward0.EditorTools
                     float r = rust[i];
                     Color rustCol = Color.Lerp(Color.Lerp(rustDeep, rustA, mottle), rustB, Hash(x / 2, y / 2, 3) * r);
                     float g = grime[i];
-                    for (int k = 0; k < 3; k++)
+                    for (int k = 0; k < 4; k++)
                     {
-                        Color baseA = k == 0 ? gunA : (k == 1 ? darkA : redA);
-                        Color baseB = k == 0 ? gunB : (k == 1 ? darkB : redB);
+                        Color baseA = k == 0 ? gunA : (k == 1 ? darkA : (k == 2 ? redA : yelA));
+                        Color baseB = k == 0 ? gunB : (k == 1 ? darkB : (k == 2 ? redB : yelB));
                         Color c = Color.Lerp(baseA, baseB, mottle);
                         // red paint chips away to rust/steel more readily
-                        float rr = k == 2 ? Mathf.Clamp01(r * 1.3f - 0.1f) : r;
+                        float rr = k == 2 ? Mathf.Clamp01(r * 1.3f - 0.1f) : (k == 3 ? Mathf.Clamp01(r * 1.6f - 0.05f) : r);
                         c = Color.Lerp(c, rustCol, rr * 0.8f);
                         c = Color.Lerp(c, c * 0.45f, g * 0.7f);
                         c += Color.white * scratch[i] * 0.07f;
@@ -142,11 +143,12 @@ namespace Ward0.EditorTools
 
             var set = new MetalSet
             {
-                Gun = Save(dir, "Metal_Gun", cols[0], n, n, false, false),
-                Dark = Save(dir, "Metal_Dark", cols[1], n, n, false, false),
-                Red = Save(dir, "Metal_RedPaint", cols[2], n, n, false, false),
-                Normal = Save(dir, "Metal_Normal", nm, n, n, true, false),
-                MetalGloss = Save(dir, "Metal_MetalGloss", mg, n, n, false, true),
+                Gun = Save(dir, prefix + "_Gun", cols[0], n, n, false, false),
+                Dark = Save(dir, prefix + "_Dark", cols[1], n, n, false, false),
+                Red = Save(dir, prefix + "_RedPaint", cols[2], n, n, false, false),
+                Yellow = Save(dir, prefix + "_YellowPaint", cols[3], n, n, false, false),
+                Normal = Save(dir, prefix + "_Normal", nm, n, n, true, false),
+                MetalGloss = Save(dir, prefix + "_MetalGloss", mg, n, n, false, true),
             };
             return set;
         }
@@ -468,6 +470,57 @@ namespace Ward0.EditorTools
                 c.Line(34, y + 6, 40, y, ink, 1.8f); c.Line(40, y, 52, y + 14, ink, 1.8f);
             }
             return Save(dir, "Paper_Checklist", c.Px, W, H, false, false);
+        }
+
+
+        // ---------- door textures ----------
+        public static Texture2D Stripes(string dir, string name, int W, int H, Color yellow, float period = 46f)
+        {
+            var px = new Color[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    float t = ((x + y) / period) % 2f; bool on = t < 1f;
+                    var c = on ? yellow : new Color(0.045f, 0.04f, 0.035f);
+                    float wear = Fbm(x / (float)W * 3f, y / (float)H, 8, 4, 19);
+                    float chips = SS(0.52f, 0.72f, wear + Hash(x / 2, y / 2, 3) * 0.25f);
+                    c = Color.Lerp(c, new Color(0.16f, 0.09f, 0.05f), chips * 0.9f);
+                    c.a = 1f; px[y * W + x] = c;
+                }
+            return Save(dir, name, px, W, H, false, false);
+        }
+
+        public static Texture2D WireMesh(string dir)
+        {
+            int S = 256; var px = new Color[S * S];
+            float p = 24f;
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float a1 = Mathf.Abs(((x + y) % p) / p - 0.5f), a2 = Mathf.Abs((((x - y) % p) + p) % p / p - 0.5f);
+                    float l1 = a1 > 0.43f ? 1f : 0f, l2 = a2 > 0.43f ? 1f : 0f;
+                    float a = Mathf.Max(l1, l2);
+                    float shade = 0.18f + 0.25f * Fbm(x / (float)S, y / (float)S, 8, 3, 7);
+                    px[y * S + x] = new Color(shade, shade * 0.95f, shade * 0.9f, a);
+                }
+            return Save(dir, "WireMesh", px, S, S, false, false, true);
+        }
+
+        public static Texture2D WindowGlow(string dir)
+        {
+            int W = 256, H = 160; var px = new Color[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    float u = x / (float)W, v = y / (float)H;
+                    float dx = (u - 0.5f) / 0.16f, dy = (v - 0.9f) / 0.05f;
+                    float lamp = Mathf.Exp(-(dx * dx + dy * dy * 0.6f));
+                    float cone = Mathf.Exp(-Mathf.Pow((u - 0.5f) / (0.15f + (1f - v) * 0.35f), 2f)) * Mathf.Pow(v, 1.5f) * 0.5f;
+                    float vign = 0.25f + 0.75f * (1f - SS(0.55f, 1f, Mathf.Max(Mathf.Abs(u - 0.5f) * 1.6f, Mathf.Abs(v - 0.5f) * 1.4f)));
+                    float b = Mathf.Clamp01((lamp * 1.3f + cone) * vign + 0.02f);
+                    px[y * W + x] = new Color(b * 0.85f, b * 0.95f, b, 1f);
+                }
+            return Save(dir, "WindowGlow", px, W, H, false, false);
         }
 
         // ---------- IO ----------

@@ -15,7 +15,12 @@ namespace Ward0.EditorTools
         const string ProfilePath = "Assets/_Project/Art/Desk/ShowcaseVolume.asset";
 
         [MenuItem("Ward0/Build Desk Showcase")]
-        public static void Build()
+        public static void Build() => Make("Assets/_Project/Art/Desk/QuarantineDesk.prefab", ScenePath, new Vector3(0.05f, 1.25f, -3.6f), new Vector3(0, 1.0f, 0), 34f, 1.0f);
+
+        [MenuItem("Ward0/Build Door Showcase")]
+        public static void BuildDoor() => Make("Assets/_Project/Art/Door/QuarantineDoor.prefab", "Assets/_Project/Scenes/DoorShowcase.unity", new Vector3(0f, 1.35f, -5.4f), new Vector3(0, 1.25f, 0), 34f, 1.5f);
+
+        static void Make(string prefabPath, string scenePath, Vector3 camPos, Vector3 lookAt, float fov, float lightScale)
         {
             Directory.CreateDirectory("Assets/_Project/Scenes");
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -37,14 +42,14 @@ namespace Ward0.EditorTools
             wall.transform.position = new Vector3(0, 2f, 2.9f); wall.transform.localScale = new Vector3(14, 4, 0.1f);
             wall.GetComponent<Renderer>().sharedMaterial = floorMat;
 
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Art/Desk/QuarantineDesk.prefab");
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             var desk = (GameObject)PrefabUtility.InstantiatePrefab(prefab); desk.transform.position = Vector3.zero;
 
             // key light (cool, from front-left above), fill and rim
             Light L(string n, LightType t, Vector3 pos, Vector3 euler, Color c, float i, float range = 10f, float angle = 60f)
             {
                 var g = new GameObject(n); g.transform.position = pos; g.transform.rotation = Quaternion.Euler(euler);
-                var l = g.AddComponent<Light>(); l.type = t; l.color = c; l.intensity = i; l.range = range; l.spotAngle = angle; l.shadows = LightShadows.Soft;
+                var l = g.AddComponent<Light>(); l.type = t; l.color = c; l.intensity = i * lightScale; l.range = range; l.spotAngle = angle; l.shadows = LightShadows.Soft;
                 return l;
             }
             L("Key", LightType.Spot, new Vector3(-2.2f, 3.2f, -3.2f), Vector3.zero, new Color(0.8f, 0.88f, 1f), 160f, 12f, 75f);
@@ -52,10 +57,10 @@ namespace Ward0.EditorTools
             L("RearFill", LightType.Point, new Vector3(-0.8f, 2.0f, 1.6f), Vector3.zero, new Color(0.9f, 0.85f, 0.8f), 14f, 7f).shadows = LightShadows.None;
             L("Rim", LightType.Spot, new Vector3(0.5f, 2.6f, 2.2f), Vector3.zero, new Color(0.5f, 0.7f, 1f), 70f, 8f, 80f);
 
-            foreach (var li in Object.FindObjectsByType<Light>(FindObjectsSortMode.None)) if (li.type == LightType.Spot) li.transform.LookAt(new Vector3(0, 1.0f, 0));
+            foreach (var li in Object.FindObjectsByType<Light>(FindObjectsSortMode.None)) if (li.type == LightType.Spot) li.transform.LookAt(lookAt);
             var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
-            camGo.transform.position = new Vector3(0.05f, 1.25f, -3.6f); camGo.transform.LookAt(new Vector3(0.0f, 1.0f, 0f));
-            var cam = camGo.AddComponent<Camera>(); cam.fieldOfView = 34f; cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.02f, 0.025f, 0.03f);
+            camGo.transform.position = camPos; camGo.transform.LookAt(lookAt);
+            var cam = camGo.AddComponent<Camera>(); cam.fieldOfView = fov; cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.02f, 0.025f, 0.03f);
             camGo.AddComponent<AudioListener>();
             var data = camGo.AddComponent<UniversalAdditionalCameraData>(); data.renderPostProcessing = true;
 
@@ -71,9 +76,9 @@ namespace Ward0.EditorTools
             AssetDatabase.DeleteAsset(ProfilePath); AssetDatabase.CreateAsset(vp, ProfilePath);
             var vg = new GameObject("PostFX"); var vol = vg.AddComponent<Volume>(); vol.isGlobal = true; vol.sharedProfile = vp;
 
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(scene, scenePath);
             AssetDatabase.SaveAssets();
-            Debug.Log("[Ward0] Showcase scene saved: " + ScenePath);
+            Debug.Log("[Ward0] Showcase scene saved: " + scenePath);
         }
     }
 }

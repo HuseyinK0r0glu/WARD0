@@ -57,3 +57,6 @@ desktop.ini
 .claude/settings.local.json
 .env
 *.key
+
+# Office temp/lock files
+~$*

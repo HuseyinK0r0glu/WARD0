@@ -45,6 +45,9 @@ Package `com.unity.pipeline` connects the CLI to the open editor. Prefer the CLI
 - If the editor isn't open (`unity status` empty), say so; use `unity open Game` only if the user agrees. Batch-mode commands fail if the same project is open in the editor.
 - MCP server `unity-editor-mcp` (`unity mcp`) exposes the same editor to Claude Code if configured.
 
+## Procedural art pipeline
+Props are built from code, not hand-modelled. Editor scripts live in `Game/Assets/_Project/Editor/Desk/` (`MeshKit`, `TexKit`, `DeskBuilder`, `ShowcaseBuilder`). Menu `Ward0 → Build Quarantine Desk` regenerates meshes, textures, materials and the prefab; `Ward0 → Build Desk Showcase` rebuilds the review scene. Change the builder, not the generated assets. Designs are authored front-toward +Z and mirrored in Z at build time (Unity is left-handed), so the finished prop faces -Z. Review with `unity command capture game_view --source camera --output-path <file>` and look at the image before calling a prop done. Reference art lives outside the repo (user's Downloads).
+
 ## C# conventions
 - Namespace `Ward0.<Area>` (e.g. `Ward0.Sanity`). One public type per file, filename = type name.
 - PascalCase types/methods/properties; `_camelCase` private fields; `camelCase` locals/params. Use `[SerializeField] private` rather than public fields.

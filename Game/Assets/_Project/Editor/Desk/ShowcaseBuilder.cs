@@ -20,7 +20,10 @@ namespace Ward0.EditorTools
         [MenuItem("Ward0/Build Door Showcase")]
         public static void BuildDoor() => Make("Assets/_Project/Art/Door/QuarantineDoor.prefab", "Assets/_Project/Scenes/DoorShowcase.unity", new Vector3(0f, 1.35f, -5.4f), new Vector3(0, 1.25f, 0), 34f, 1.5f);
 
-        static void Make(string prefabPath, string scenePath, Vector3 camPos, Vector3 lookAt, float fov, float lightScale)
+        [MenuItem("Ward0/Build Tunnel Showcase")]
+        public static void BuildTunnel() => Make("Assets/_Project/Art/Tunnel/MineTunnel.prefab", "Assets/_Project/Scenes/TunnelShowcase.unity", new Vector3(0f, 1.55f, -2.6f), new Vector3(0, 1.35f, 8f), 62f, 0.35f, false, 3, 6f);
+
+        static void Make(string prefabPath, string scenePath, Vector3 camPos, Vector3 lookAt, float fov, float lightScale, bool stage = true, int copies = 1, float stepZ = 0f)
         {
             Directory.CreateDirectory("Assets/_Project/Scenes");
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -32,7 +35,8 @@ namespace Ward0.EditorTools
             RenderSettings.reflectionIntensity = 1f;
             RenderSettings.fog = true; RenderSettings.fogMode = FogMode.Exponential; RenderSettings.fogDensity = 0.03f; RenderSettings.fogColor = new Color(0.03f, 0.04f, 0.045f);
 
-            // floor + back wall
+            // floor + back wall (skipped for enclosed props such as the tunnel)
+            if (stage) {
             var floorMat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = new Color(0.07f, 0.07f, 0.07f) };
             floorMat.SetFloat("_Smoothness", 0.35f);
             var floor = GameObject.CreatePrimitive(PrimitiveType.Cube); floor.name = "Floor";
@@ -41,9 +45,10 @@ namespace Ward0.EditorTools
             var wall = GameObject.CreatePrimitive(PrimitiveType.Cube); wall.name = "BackWall";
             wall.transform.position = new Vector3(0, 2f, 2.9f); wall.transform.localScale = new Vector3(14, 4, 0.1f);
             wall.GetComponent<Renderer>().sharedMaterial = floorMat;
+            }
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            var desk = (GameObject)PrefabUtility.InstantiatePrefab(prefab); desk.transform.position = Vector3.zero;
+            for (int ci = 0; ci < copies; ci++) { var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab); inst.transform.position = new Vector3(0, 0, ci * stepZ); }
 
             // key light (cool, from front-left above), fill and rim
             Light L(string n, LightType t, Vector3 pos, Vector3 euler, Color c, float i, float range = 10f, float angle = 60f)

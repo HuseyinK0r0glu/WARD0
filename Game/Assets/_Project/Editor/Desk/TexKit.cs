@@ -523,6 +523,117 @@ namespace Ward0.EditorTools
             return Save(dir, "WindowGlow", px, W, H, false, false);
         }
 
+
+        // ---------- tileable cellular noise + natural surface sets (mine tunnel) ----------
+        public static void Worley(float u, float v, int f, int seed, out float f1, out float f2, out float id)
+        {
+            float x = u * f, y = v * f; int xi = Mathf.FloorToInt(x), yi = Mathf.FloorToInt(y);
+            f1 = 9f; f2 = 9f; id = 0f;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int cx = xi + dx, cy = yi + dy; int wx = ((cx % f) + f) % f, wy = ((cy % f) + f) % f;
+                    float px = cx + Hash(wx, wy, seed), py = cy + Hash(wx, wy, seed + 101);
+                    float d = Mathf.Sqrt((px - x) * (px - x) + (py - y) * (py - y));
+                    if (d < f1) { f2 = f1; f1 = d; id = Hash(wx, wy, seed + 7); } else if (d < f2) f2 = d;
+                }
+        }
+
+        public sealed class SurfaceSet { public Texture2D Albedo, Normal, MetalGloss; }
+
+        static SurfaceSet FinishSurface(string dir, string name, int n, Color[] alb, float[] height, Color[] mg, float strength)
+        {
+            var nm = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int xl = (x - 1 + n) % n, xr = (x + 1) % n, yd = (y - 1 + n) % n, yu = (y + 1) % n;
+                    float dx = (height[y * n + xr] - height[y * n + xl]) * strength, dy = (height[yu * n + x] - height[yd * n + x]) * strength;
+                    Vector3 nv = new Vector3(-dx, -dy, 1f).normalized;
+                    nm[y * n + x] = new Color(nv.x * 0.5f + 0.5f, nv.y * 0.5f + 0.5f, nv.z * 0.5f + 0.5f, 1f);
+                }
+            return new SurfaceSet
+            {
+                Albedo = Save(dir, name + "_Albedo", alb, n, n, false, false),
+                Normal = Save(dir, name + "_Normal", nm, n, n, true, false),
+                MetalGloss = Save(dir, name + "_MetalGloss", mg, n, n, false, true),
+            };
+        }
+
+        /// <summary>Black coal-bearing rock: angular chunks, cracks, dusty crevices and sparkly glints.</summary>
+        public static SurfaceSet RockSurface(string dir, string name = "Rock", int n = 1024)
+        {
+            var alb = new Color[n * n]; var h = new float[n * n]; var mg = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (float)x / n, v = (float)y / n;
+                    Worley(u, v, 6, 11, out float a1, out float a2, out float aid);
+                    Worley(u, v, 17, 29, out float b1, out float b2, out float bid);
+                    float fine = Fbm(u, v, 40, 3, 5);
+                    float mid = Fbm(u, v, 9, 4, 17);
+                    float crackA = 1f - SS(0f, 0.09f, a2 - a1), crackB = 1f - SS(0f, 0.07f, b2 - b1);
+                    float hh = 0.22f * aid + 0.22f * (1f - SS(0f, 0.9f, a1)) + 0.16f * bid + 0.2f * (1f - SS(0f, 0.8f, b1)) + 0.45f * fine + 0.25f * mid - 0.12f * crackA - 0.08f * crackB;
+                    h[y * n + x] = hh;
+                    float tone = Mathf.Lerp(0.022f, 0.10f, aid * 0.45f + mid * 0.55f) * (0.75f + 0.6f * fine);
+                    var col = new Color(tone * 1.02f, tone * 0.98f, tone * 0.95f, 1f);
+                    col = Color.Lerp(col, new Color(0.09f, 0.075f, 0.06f), SS(0.5f, 0.2f, hh) * 0.35f);          // dust in crevices
+                    col = Color.Lerp(col, new Color(0.012f, 0.012f, 0.012f), (crackA * 0.55f + crackB * 0.4f));
+                    col += Color.white * (SS(0.45f, 0.85f, hh) * 0.035f);
+                    float glint = Hash(x, y, 91) > 0.9965f ? 1f : 0f;
+                    col += Color.white * glint * 0.22f;
+                    col.a = 1f; alb[y * n + x] = col;
+                    mg[y * n + x] = new Color(0f, 0f, 0f, Mathf.Clamp01(0.12f + glint * 0.5f + SS(0.55f, 0.9f, hh) * 0.12f));
+                }
+            return FinishSurface(dir, name, n, alb, h, mg, 5.5f);
+        }
+
+        /// <summary>Gravel / packed earth for the tunnel floor and ballast.</summary>
+        public static SurfaceSet GravelSurface(string dir, string name = "Gravel", int n = 1024)
+        {
+            var alb = new Color[n * n]; var h = new float[n * n]; var mg = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (float)x / n, v = (float)y / n;
+                    Worley(u, v, 20, 41, out float f1, out float f2, out float id);
+                    Worley(u, v, 46, 77, out float g1, out float g2, out float gid);
+                    float peb = SS(0.55f, 0.12f, f1), peb2 = SS(0.5f, 0.1f, g1);
+                    float dirt = Fbm(u, v, 8, 4, 3);
+                    float hh = Mathf.Max(peb * (0.5f + 0.5f * id), peb2 * 0.6f * (0.5f + 0.5f * gid)) * 0.8f + 0.2f * dirt;
+                    h[y * n + x] = hh;
+                    float t = Mathf.Lerp(0.06f, 0.26f, id);
+                    var stone = Color.Lerp(new Color(t, t * 0.95f, t * 0.9f), new Color(t * 1.2f, t * 0.8f, t * 0.55f), Hash((int)(id * 977), 3, 5));
+                    var earth = Color.Lerp(new Color(0.035f, 0.028f, 0.02f), new Color(0.09f, 0.065f, 0.04f), dirt);
+                    var col = Color.Lerp(earth, stone, SS(0.15f, 0.5f, Mathf.Max(peb, peb2)));
+                    col.a = 1f; alb[y * n + x] = col;
+                    mg[y * n + x] = new Color(0f, 0f, 0f, 0.06f + 0.15f * peb);
+                }
+            return FinishSurface(dir, name, n, alb, h, mg, 3.0f);
+        }
+
+        /// <summary>Weathered, rotting timber (direction-neutral so it works on any box face).</summary>
+        public static SurfaceSet WoodSurface(string dir, string name = "Wood", int n = 1024)
+        {
+            var alb = new Color[n * n]; var h = new float[n * n]; var mg = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (float)x / n, v = (float)y / n;
+                    float grain = Fbm(u, v, 12, 4, 21) * 0.55f + Fbm(u, v, 48, 2, 6) * 0.45f;
+                    Worley(u, v, 11, 8, out float f1, out float f2, out float id);
+                    float crack = (1f - SS(0f, 0.02f, f2 - f1)) * SS(0.45f, 0.65f, Fbm(u, v, 6, 3, 44));
+                    float rot = SS(0.55f, 0.8f, Fbm(u, v, 7, 4, 13));
+                    var baseCol = Color.Lerp(new Color(0.13f, 0.085f, 0.05f), new Color(0.27f, 0.18f, 0.1f), grain * 0.7f + id * 0.3f);
+                    baseCol = Color.Lerp(baseCol, new Color(0.09f, 0.085f, 0.075f), rot * 0.7f);                  // grey rot
+                    baseCol = Color.Lerp(baseCol, new Color(0.02f, 0.015f, 0.01f), crack * 0.8f);
+                    baseCol.a = 1f; alb[y * n + x] = baseCol;
+                    h[y * n + x] = grain * 0.35f + (1f - crack) * 0.4f - rot * 0.15f + 0.1f * Fbm(u, v, 30, 2, 5);
+                    mg[y * n + x] = new Color(0f, 0f, 0f, 0.1f + 0.08f * grain);
+                }
+            return FinishSurface(dir, name, n, alb, h, mg, 2.2f);
+        }
+
         // ---------- IO ----------
         public static Texture2D Save(string dir, string name, Color[] px, int w, int h, bool normal, bool linear, bool alphaTransparency = false)
         {

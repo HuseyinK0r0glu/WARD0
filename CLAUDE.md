@@ -23,16 +23,27 @@ WARD 0 is a 3D first-person quarantine/diagnostic psychological horror game in *
 - Unity Editor work (scene layout, prefab wiring, Shader Graph, inspector settings) can't be done from here — give the user clear step-by-step editor instructions instead of pretending.
 - Verify: when possible, compile-check C# (no errors/warnings introduced) and say plainly what couldn't be tested (play-mode behavior).
 
-## Unity project layout (target)
+## Unity project
+- Unity project root is **`Game/`** (repo root holds `docs/`, `CLAUDE.md`, `.gitignore`). Editor **6000.3.9f1**, URP template. Run Unity commands with `Game/` as the project path.
+- Layout target:
 ```
-Assets/
+Game/Assets/
   _Project/
     Scripts/   (Core, Interaction, Scanners, Sanity, Miners, Tunnels, Audio, UI)
     Scenes/  Prefabs/  Materials/  Shaders/  Art/  Audio/  Settings/
   ThirdParty/   (imported asset packs, untouched)
-docs/
 ```
 Keep third-party packs under `ThirdParty/` and never modify them in place; copy/variant instead.
+
+## Unity CLI (`unity`, installed at `~/AppData/Local/Unity/bin`)
+Package `com.unity.pipeline` connects the CLI to the open editor. Prefer the CLI over guessing.
+- `unity status` — is the editor connected (port, project, state)?
+- `unity list` / `unity command <cmd>` — list/run editor commands (recompile, play/pause, capture game_view/scene_view, component/script/scene ops). Run `unity list` to see what exists before using.
+- `unity test Game` — run EditMode/PlayMode tests; `unity build Game` — batch build.
+- `unity logs`, `unity doctor` — diagnostics. Add `--json` for machine-readable output.
+- After editing C# files, trigger a recompile and read console errors before calling a task done.
+- If the editor isn't open (`unity status` empty), say so; use `unity open Game` only if the user agrees. Batch-mode commands fail if the same project is open in the editor.
+- MCP server `unity-editor-mcp` (`unity mcp`) exposes the same editor to Claude Code if configured.
 
 ## C# conventions
 - Namespace `Ward0.<Area>` (e.g. `Ward0.Sanity`). One public type per file, filename = type name.

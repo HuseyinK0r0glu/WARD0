@@ -1,0 +1,126 @@
+name: Task / Issue
+description: Report a bug, a performance problem, or propose a change for WARD 0
+title: "[Area] Short, specific summary"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep it short and testable. One issue = one change. Link related issues instead of bundling them.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Bug
+        - Performance
+        - Gameplay / balance
+        - Audio
+        - UI / text
+        - Art / assets
+        - Level / map
+        - Tooling / pipeline
+        - Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the game does this touch?
+      multiple: true
+      options:
+        - Triage desk / scanners
+        - Quarantine cell / airlock / doors
+        - Mine tunnels / corridor swap
+        - Patrols / stealth
+        - Sanity / post-processing
+        - Player / controls
+        - Audio
+        - HUD / on-screen text
+        - Build / editor tooling
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - blocks playing / shipping
+        - P1 - must fix this milestone
+        - P2 - should fix
+        - P3 - nice to have
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone (12-week plan)
+      options:
+        - Demo I (W3-5)
+        - Demo II (W6-9)
+        - Final release (W10-12)
+        - Backlog
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / context
+      description: What is wrong or missing, and why does it matter? Include where it happens (scene, room, phase of the shift).
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce (bugs / performance)
+      description: Numbered steps, plus what you expected and what happened. Add FPS / Stats numbers or a screenshot when relevant.
+      placeholder: |
+        1. Open Ward0_Map and press Play
+        2. ...
+        Expected:
+        Actual:
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should we do? List options if undecided and mark the recommended one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist that proves it is done.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: questions
+    attributes:
+      label: Open questions
+      description: Decisions the team still has to make.
+
+  - type: input
+    id: owner
+    attributes:
+      label: Suggested owner(s)
+      description: Who should pick this up (see the role table in docs/GAME_DESIGN.md)?
+      placeholder: e.g. Hasan Can Zorlu, Fikret Karakuzu
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / links
+      description: Related issues, files, commits, references.

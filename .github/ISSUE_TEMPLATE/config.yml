@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Game design reference
+    url: https://github.com/HuseyinK0r0glu/WARD0/blob/master/docs/GAME_DESIGN.md
+    about: Check the design doc before proposing gameplay changes.

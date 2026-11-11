@@ -11,7 +11,10 @@ namespace Ward0.Gameplay
 
         private bool _on; private Quaternion _rest; private float _k;
 
-        public override string Prompt => role == DeskRole.Clear ? "E: CLEAR the miner" : "E: " + role + (_on ? " off" : " on");
+        /// <summary>Which desk function this switch drives.</summary>
+        public DeskRole Role => role;
+
+        public override string Prompt => GameText.PromptDesk(role, _on);
 
         private void Awake() { _rest = transform.localRotation; }
 
@@ -20,7 +23,7 @@ namespace Ward0.Gameplay
             if (role == DeskRole.Clear) { _on = true; controller.OnToggle(role, true); StartCoroutine(Bounce()); return; }
             if (role == DeskRole.Analysis) { _on = true; controller.OnToggle(role, true); StartCoroutine(Bounce()); return; }
             if (role == DeskRole.Log) { controller.OnToggle(role, true); StartCoroutine(Bounce()); return; }
-            if (role != DeskRole.Power && !controller.PowerOn) { if (ShiftManager.Instance != null) ShiftManager.Instance.Say("Main power is off.", 2f); ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.3f, 10f, 0.6f); return; }
+            if (role != DeskRole.Power && !controller.PowerOn) { if (ShiftManager.Instance != null) ShiftManager.Instance.Say(GameText.DeskNoPower, 2.5f); ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.3f, 10f, 0.6f); return; }
             _on = !_on; controller.OnToggle(role, _on);
             ProceduralAudio.PlayAt(ProceduralAudio.Clank(), transform.position, 0.25f, 10f, 2f);
         }

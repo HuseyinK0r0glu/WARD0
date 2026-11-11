@@ -6,11 +6,11 @@ namespace Ward0.Gameplay
     public class DeskLever : Interactable
     {
         [SerializeField] private DeskController controller;
-        public override string Prompt => "E: pull lever (INCINERATE)";
+        public override string Prompt => GameText.PromptIncinerate;
         public override void OnInteract(PlayerController player)
         {
             var sm = ShiftManager.Instance; if (sm == null) return;
-            if (!sm.CanSubmitVerdict) { sm.Say("No miner awaiting a verdict.", 2f); return; }
+            if (!sm.CanSubmitVerdict) { sm.ExplainNoVerdict(); return; }
             controller.PullLever(() => sm.SubmitVerdict(true));
         }
     }

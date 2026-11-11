@@ -39,14 +39,34 @@ namespace Ward0.Gameplay
                 case DeskRole.Power: _power = on; desk.SetStatusLed(4, on); if (!on) { _xrayOn = _bioOn = false; } break;
                 case DeskRole.XRay: _xrayOn = on; if (on && _power) desk.SetStatusLed(5, true); break;
                 case DeskRole.Bioscan: _bioOn = on; if (on && _power) desk.SetStatusLed(5, true); break;
-                case DeskRole.Analysis: if (on && _power && _subject != null && !_analysing) StartCoroutine(Analyse()); break;
-                case DeskRole.Log: if (ShiftManager.Instance != null) ShiftManager.Instance.Say(_subject == null ? "Log: no subject." : "Log: subject " + (_analysed ? "analysed" : "not yet analysed") + ".", 3f); break;
+                case DeskRole.Analysis:
+                    if (!on) break;
+                    if (!_power) Say(GameText.DeskNoPower);
+                    else if (_subject == null) Say(GameText.AnalysisNoSubject);
+                    else { if (!_analysing) StartCoroutine(Analyse()); Say(GameText.AnalysisRunning); }
+                    break;
+                case DeskRole.Log: Say(_subject == null ? GameText.LogNoSubject : (_analysed ? GameText.LogAnalysed : GameText.LogPending), 3f); break;
                 case DeskRole.Clear: if (ShiftManager.Instance != null) ShiftManager.Instance.SubmitVerdict(false); break;
             }
             Refresh();
         }
 
+        private static void Say(string msg, float seconds = 2.5f) { if (ShiftManager.Instance != null) ShiftManager.Instance.Say(msg, seconds); }
+
+        /// <summary>True while the desk main power switch is on.</summary>
         public bool PowerOn => _power;
+        /// <summary>True while the X-ray screen is switched on.</summary>
+        public bool XRayOn => _xrayOn;
+        /// <summary>True while the bioscan screen is switched on.</summary>
+        public bool BioscanOn => _bioOn;
+        /// <summary>True when at least one of the two scan screens is on.</summary>
+        public bool ScanActive => _xrayOn || _bioOn;
+        /// <summary>True while the analysis run is in progress.</summary>
+        public bool Analysing => _analysing;
+        /// <summary>True once the analysis readout for the current miner is finished.</summary>
+        public bool Analysed => _analysed;
+        /// <summary>True while a miner is in the cell.</summary>
+        public bool HasSubject => _subject != null;
 
         public void PullLever(System.Action onPulled)
         {
@@ -69,7 +89,7 @@ namespace Ward0.Gameplay
             _analysing = true; desk.SetStatusLed(6, true);
             ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.5f);
             yield return new WaitForSeconds(3.2f);
-            if (_subject != null) { _analysed = true; desk.SetStatusLed(7, true); ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.6f, 20f, 1.4f); }
+            if (_subject != null) { _analysed = true; desk.SetStatusLed(7, true); ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.6f, 20f, 1.4f); Say(GameText.AnalysisDone, 3f); }
             _analysing = false; desk.SetStatusLed(6, false);
         }
 

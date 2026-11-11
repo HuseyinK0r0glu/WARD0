@@ -18,13 +18,14 @@ namespace Ward0.Gameplay
         [SerializeField] private Renderer[] ledsToGreen;
         [SerializeField] private Material greenMat;
 
+        private string _promptRepair, _promptDone;
         private float _progress; private bool _done, _swapped; private PlayerController _player; private float _clankT; private Quaternion _spinRest;
 
         public bool IsDone => _done;
         public string StationName => stationName;
         public override bool CanInteract => !_done;
         public override float HoldSeconds => _done ? 0f : repairSeconds;
-        public override string Prompt => _done ? stationName + " repaired" : "Hold E: repair " + stationName;
+        public override string Prompt => _done ? (_promptDone ?? (_promptDone = GameText.PromptRepaired(stationName))) : (_promptRepair ?? (_promptRepair = GameText.PromptRepair(stationName)));
 
         private void Awake() { if (spinner != null) _spinRest = spinner.localRotation; if (steam != null) steam.Peak += DoSwap; }
 
@@ -51,7 +52,9 @@ namespace Ward0.Gameplay
         private void DoSwap()
         {
             if (_swapped || _player == null) return; _swapped = true;
-            var map = MineMap.Instance; if (map == null || node == null) return;
+            var map = MineMap.Instance; if (map == null) return;
+            if (node == null) node = map.Nearest(transform.position);   // stations live in a streamed zone scene and cannot hold a reference to the core-scene node
+            if (node == null) return;
             var blocked = map.BlockRear(node, _player.transform.position, _player.transform.forward);
             if (blocked != null) ProceduralAudio.PlayAt(ProceduralAudio.Rumble(), blocked.Midpoint + Vector3.up, 1f, 40f);
             if (ShiftManager.Instance != null) ShiftManager.Instance.OnCorridorSwapped(blocked);

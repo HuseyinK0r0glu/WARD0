@@ -5,7 +5,7 @@ namespace Ward0.Gameplay
     public class ElevatorButton : Interactable
     {
         [SerializeField] private ElevatorCar car;
-        public override string Prompt => "E: call elevator";
+        public override string Prompt => GameText.PromptElevatorCall;
         public override void OnInteract(PlayerController player)
         {
             ProceduralAudio.PlayAt(ProceduralAudio.Beep(), transform.position, 0.6f);

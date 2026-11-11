@@ -46,6 +46,7 @@ namespace Ward0.Gameplay
         public float ElapsedMine { get; private set; }
 
         private bool _busy; private float _alarmT;
+        private int _objKey = -1; private string _objText = "";
 
         private void Awake() { Instance = this; Time.timeScale = 1f; }
 
@@ -58,24 +59,19 @@ namespace Ward0.Gameplay
         private IEnumerator Intro()
         {
             if (hud != null) yield return hud.Fade(0f, 2.2f);
-            Say("SHIFT 07 // Evaluate each miner behind the glass.", 5f);
+            Say(GameText.Intro, 6f, true, HudOverlay.Tone.Info);
             yield return new WaitForSeconds(2.5f);
             SpawnNextMiner();
         }
 
+        /// <summary>Current objective line for the HUD (cached, rebuilt only when the phase or progress changes).</summary>
         public string ObjectiveText
         {
             get
             {
-                switch (Phase)
-                {
-                    case ShiftPhase.Triage: return "Triage: " + MinersProcessed + " / " + minersToProcess + " miners processed";
-                    case ShiftPhase.Descent: return "Take the elevator down";
-                    case ShiftPhase.Mine: return "Repair systems: " + Repairs + " / " + repairsNeeded;
-                    case ShiftPhase.Return: return "Return to the elevator";
-                    case ShiftPhase.Complete: return "Shift complete";
-                    default: return "";
-                }
+                int key = ((int)Phase * 32 + MinersProcessed) * 32 + Repairs;
+                if (key != _objKey) { _objKey = key; _objText = GameText.Objective(Phase, MinersProcessed, minersToProcess, Repairs, repairsNeeded); }
+                return _objText;
             }
         }
 
@@ -85,8 +81,8 @@ namespace Ward0.Gameplay
             {
                 ElapsedMine += Time.deltaTime;
                 TimeLeft = Mathf.Max(0f, TimeLeft - Time.deltaTime);
-                if (TimeLeft <= 0f) Fail("The reactor failed before you finished. The mine is lost.");
-                if (SanitySystem.Instance != null && SanitySystem.Instance.Effective <= 0.5f) Fail("Your mind broke in the dark.");
+                if (TimeLeft <= 0f) Fail(FailCause.Reactor);
+                if (SanitySystem.Instance != null && SanitySystem.Instance.Effective <= 0.5f) Fail(FailCause.Mind);
             }
             if (Phase == ShiftPhase.Descent && alarmLights != null)
             {
@@ -97,7 +93,10 @@ namespace Ward0.Gameplay
                 SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
 
+        /// <summary>Queue a routine on-screen message.</summary>
         public void Say(string msg, float seconds = 4f) { if (hud != null) hud.Say(msg, seconds); }
+        /// <summary>Queue an on-screen message; important ones are never overwritten or dropped in favour of routine ones.</summary>
+        public void Say(string msg, float seconds, bool important, HudOverlay.Tone tone = HudOverlay.Tone.Info) { if (hud != null) hud.Say(msg, seconds, important, tone); }
 
         // ------------------------------------------------------------ triage
         private void SpawnNextMiner()
@@ -108,14 +107,22 @@ namespace Ward0.Gameplay
             CurrentMiner.Setup(infected, cellGlass);
             if (desk != null) desk.SetSubject(CurrentMiner);
             _busy = false;
-            Say("A miner enters the cell. Use the scanners, then decide.", 4f);
+            Say(GameText.MinerArrives(MinersProcessed + 1, minersToProcess), 4f);
         }
 
         public bool CanSubmitVerdict => Phase == ShiftPhase.Triage && CurrentMiner != null && !_busy && CurrentMiner.IsReady;
 
+        /// <summary>Tell the player why no verdict can be given right now (no miner, miner still arriving, triage over).</summary>
+        public void ExplainNoVerdict()
+        {
+            if (Phase != ShiftPhase.Triage) Say(GameText.TriageDone, 2.5f);
+            else if (CurrentMiner == null) Say(GameText.NoMinerInCell, 2.5f);
+            else Say(GameText.MinerNotReady, 2.5f);
+        }
+
         public void SubmitVerdict(bool incinerate)
         {
-            if (!CanSubmitVerdict) { Say("No miner awaiting a verdict.", 2f); return; }
+            if (!CanSubmitVerdict) { ExplainNoVerdict(); return; }
             _busy = true; var m = CurrentMiner; CurrentMiner = null; if (desk != null) desk.SetSubject(null);
             StartCoroutine(VerdictRoutine(m, incinerate));
         }
@@ -126,18 +133,18 @@ namespace Ward0.Gameplay
             {
                 if (m.Infected)
                 {
-                    Say("CLEARED.", 1.2f);
+                    Say(GameText.VerdictClear, 1.2f, true);
                     yield return new WaitForSeconds(1.0f);
                     yield return m.Ambush();
-                    Fail("You cleared an infected miner. It was the last thing you saw.");
+                    Fail(FailCause.ClearedInfected);
                     yield break;
                 }
-                Say("Cleared. The miner is escorted out.", 3f);
+                Say(GameText.ClearHealthy, 3f, true);
                 yield return m.Release();
             }
             else
             {
-                Say("INCINERATING.", 1.5f);
+                Say(GameText.VerdictIncinerate, 1.5f, true);
                 if (incineratorFire != null) incineratorFire.Play();
                 if (incineratorLight != null) incineratorLight.enabled = true;
                 ProceduralAudio.PlayAt(ProceduralAudio.Whoosh(), minerSpawn.position, 1f, 30f, 0.6f);
@@ -147,10 +154,10 @@ namespace Ward0.Gameplay
                 if (!m.Infected)
                 {
                     if (SanitySystem.Instance != null) SanitySystem.Instance.PunishInnocentIncineration();
-                    Say("The miner was healthy. You will carry that.", 4.5f);
+                    Say(GameText.IncinerateHealthy, 5f, true, HudOverlay.Tone.Danger);
                     if (hud != null) hud.Flash(new Color(0.5f, 0f, 0f), 0.6f);
                 }
-                else Say("Infected. Threat removed.", 3f);
+                else Say(GameText.IncinerateInfected, 3f, true, HudOverlay.Tone.Good);
             }
             MinersProcessed++;
             yield return new WaitForSeconds(2.5f);
@@ -163,7 +170,7 @@ namespace Ward0.Gameplay
             Phase = ShiftPhase.Descent; _busy = false;
             ProceduralAudio.Play2D(ProceduralAudio.Alarm(), 0.5f);
             StartCoroutine(AlarmLoop());
-            Say("FACILITY BREAKDOWN. Take the elevator down and restore " + repairsNeeded + " systems.", 7f);
+            Say(GameText.Breakdown(repairsNeeded), 8f, true, HudOverlay.Tone.Danger);
             if (hud != null) hud.Flash(new Color(0.6f, 0.05f, 0.02f), 0.5f);
         }
 
@@ -179,14 +186,14 @@ namespace Ward0.Gameplay
             if (_busy || elevator == null) return;
             if (car.IsUpper)
             {
-                if (Phase == ShiftPhase.Triage) { Say("The elevator is locked until triage is done.", 3f); return; }
-                if (Phase != ShiftPhase.Descent) { Say("Nothing left to do down there.", 2.5f); return; }
+                if (Phase == ShiftPhase.Triage) { Say(GameText.ElevatorLockedTriage(minersToProcess - MinersProcessed), 4f, false, HudOverlay.Tone.Warn); return; }
+                if (Phase != ShiftPhase.Descent) { Say(GameText.ElevatorNotNeeded, 2.5f, false, HudOverlay.Tone.Warn); return; }
                 StartCoroutine(RideRoutine(car, ShiftPhase.Mine));
             }
             else
             {
                 if (Phase == ShiftPhase.Return) StartCoroutine(RideRoutine(car, ShiftPhase.Complete));
-                else Say("Systems are still failing. " + (repairsNeeded - Repairs) + " repair(s) remain.", 3.5f);
+                else Say(GameText.ElevatorLockedRepairs(repairsNeeded - Repairs), 4f, false, HudOverlay.Tone.Warn);
             }
         }
 
@@ -198,14 +205,14 @@ namespace Ward0.Gameplay
             {
                 Phase = ShiftPhase.Mine; TimeLeft = mineSeconds;
                 if (director != null) director.StartPatrols(1);
-                Say("Restore " + repairsNeeded + " systems before the reactor fails. Stay quiet. Stay out of sight.", 7f);
+                Say(GameText.MineArrive(repairsNeeded), 8f, true);
             }
             else
             {
                 Phase = ShiftPhase.Complete;
                 if (director != null) director.StopPatrols();
                 if (SanitySystem.Instance != null) SanitySystem.Instance.ClearTemporaryDecay();
-                if (hud != null) hud.ShowEnd(true, BuildSummary());
+                if (hud != null) hud.ShowEnd(true, GameText.WinTitle, BuildSummary(), GameText.WinNext);
                 player.Frozen = true;
             }
             _busy = false;
@@ -214,7 +221,7 @@ namespace Ward0.Gameplay
         private string BuildSummary()
         {
             var s = SanitySystem.Instance;
-            return "Time in the mine: " + FormatTime(ElapsedMine) + "\nSanity baseline: " + (s != null ? Mathf.RoundToInt(s.Baseline) : 100) + "%\nMiners processed: " + MinersProcessed;
+            return GameText.WinBody(FormatTime(ElapsedMine), s != null ? Mathf.RoundToInt(s.Baseline) : 100, MinersProcessed);
         }
 
         public static string FormatTime(float t) { int m = Mathf.FloorToInt(t / 60f), s = Mathf.FloorToInt(t % 60f); return m.ToString("0") + ":" + s.ToString("00"); }
@@ -227,14 +234,14 @@ namespace Ward0.Gameplay
             if (Repairs >= repairsNeeded)
             {
                 Phase = ShiftPhase.Return;
-                Say("All systems stabilised. Get back to the elevator!", 6f);
+                Say(GameText.AllRepaired, 7f, true, HudOverlay.Tone.Good);
             }
-            else Say(st.StationName + " restored. " + (repairsNeeded - Repairs) + " to go. The patrols are getting restless.", 5f);
+            else Say(GameText.RepairDone(st.StationName, repairsNeeded - Repairs), 5f, true, HudOverlay.Tone.Good);
         }
 
         public void OnCorridorSwapped(MineCorridor c)
         {
-            if (c != null) Say("The tunnel behind you has collapsed...", 4.5f);
+            if (c != null) Say(GameText.CorridorCollapsed, 5f, true, HudOverlay.Tone.Warn);
         }
 
         public void PlayerCaught(PatrolEnemy e)
@@ -243,16 +250,22 @@ namespace Ward0.Gameplay
             player.Frozen = true;
             e.Lunge(player.transform.position);
             ProceduralAudio.PlayAt(ProceduralAudio.Growl(), e.transform.position, 1f, 25f, 0.8f);
-            Fail("A patrol found you.");
+            Fail(FailCause.Patrol);
         }
 
-        public void Fail(string reason)
+        /// <summary>End the shift in failure with a custom explanation (generic result screen).</summary>
+        public void Fail(string reason) { Fail(FailCause.Other, reason); }
+
+        /// <summary>End the shift in failure; the result screen text comes from <see cref="GameText"/>.</summary>
+        public void Fail(FailCause cause) { Fail(cause, GameText.FailBody(cause)); }
+
+        private void Fail(FailCause cause, string reason)
         {
             if (Phase == ShiftPhase.Failed) return;
             Phase = ShiftPhase.Failed; FailReason = reason;
             player.Frozen = true;
             if (director != null) director.Pause();
-            if (hud != null) hud.ShowEnd(false, reason);
+            if (hud != null) hud.ShowEnd(false, GameText.FailTitle(cause), reason, GameText.FailNext(cause));
         }
     }
 }

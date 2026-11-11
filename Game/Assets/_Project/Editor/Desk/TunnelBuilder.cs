@@ -23,6 +23,7 @@ namespace Ward0.EditorTools
         const float RibR = 1.62f;        // arch rib radius
         static readonly float[] RibZ = { -2f, 0f, 2f };
         static System.Random rng;
+        static int lod;   // 0 = full detail; 1 = mid LOD (no rivets, flanges, lagging, rubble, cables); read by the detail-heavy builders
 
         static float R() => (float)rng.NextDouble();
         static float R(float a, float b) => a + (b - a) * R();
@@ -41,11 +42,9 @@ namespace Ward0.EditorTools
             root = go.transform;
             var seg = go.AddComponent<MineTunnelSegment>();
 
-            // rock shell + floor (separate meshes with colliders)
+            // rock shell + floor (separate meshes; their colliders use the LOD1 meshes, added with the LODs below)
             var shell = Part("RockShell", root, BuildShell(), "MineRock", Vector3.zero);
-            shell.gameObject.AddComponent<MeshCollider>().sharedMesh = shell.GetComponent<MeshFilter>().sharedMesh;
             var floor = Part("Floor", root, BuildFloor(), "MineFloor", Vector3.zero);
-            floor.gameObject.AddComponent<MeshCollider>().sharedMesh = floor.GetComponent<MeshFilter>().sharedMesh;
 
             // everything else is merged per material
             cb = new Combiner();
@@ -69,6 +68,8 @@ namespace Ward0.EditorTools
             var a0 = Obj("StartAnchor", root, new Vector3(0, 0, -Len / 2));
             var a1 = Obj("EndAnchor", root, new Vector3(0, 0, Len / 2));
 
+            BuildLods(go, shell, floor, bulb);
+
             var so = new SerializedObject(seg);
             so.FindProperty("startAnchor").objectReferenceValue = a0.transform;
             so.FindProperty("endAnchor").objectReferenceValue = a1.transform;
@@ -80,6 +81,41 @@ namespace Ward0.EditorTools
             Object.DestroyImmediate(go);
             AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
             Debug.Log("[Ward0] Mine tunnel built: " + PrefabPath);
+        }
+
+        // ============================================================ LODs
+        /// <summary>
+        /// The full-detail segment is ~63k triangles and there are 22 of them, redrawn in every shadow pass, so mid and far
+        /// segments swap to cheaper meshes. Built after LOD0 so LOD0 (and its random stream) is unchanged. The LOD1 shell and
+        /// floor (every second vertex of LOD0) double as the colliders: they cook faster and are cheaper to query.
+        /// </summary>
+        static void BuildLods(GameObject go, Renderer shell, Renderer floor, Renderer bulb)
+        {
+            var lod0 = go.GetComponentsInChildren<Renderer>();
+            var g1 = Obj("LOD1", root, Vector3.zero); var g2 = Obj("LOD2", root, Vector3.zero);
+            var s1 = Part("RockShell_LOD1", g1.transform, BuildShell(48, 30), "MineRock", Vector3.zero);
+            var f1 = Part("Floor_LOD1", g1.transform, BuildFloor(28, 30), "MineFloor", Vector3.zero);
+            var s2 = Part("RockShell_LOD2", g2.transform, BuildShell(24, 15), "MineRock", Vector3.zero);
+            var f2 = Part("Floor_LOD2", g2.transform, BuildFloor(14, 15), "MineFloor", Vector3.zero);
+            var r1 = new List<Renderer> { s1, f1, bulb }; var r2 = new List<Renderer> { s2, f2, bulb };
+
+            cb = new Combiner(); lod = 1;
+            BuildRibs(); BuildRails(); BuildPipes();
+            lod = 0;
+            foreach (var kv in cb.Bake("TunnelLOD1"))
+            {
+                string p = SaveMesh(kv.Value, "TunnelLOD1_" + kv.Key.name);
+                var g = Obj("Body_" + kv.Key.name, g1.transform, Vector3.zero);
+                g.AddComponent<MeshFilter>().sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(p);
+                r1.Add(g.AddComponent<MeshRenderer>()); r1[r1.Count - 1].sharedMaterial = kv.Key;
+            }
+
+            shell.gameObject.AddComponent<MeshCollider>().sharedMesh = s1.GetComponent<MeshFilter>().sharedMesh;
+            floor.gameObject.AddComponent<MeshCollider>().sharedMesh = f1.GetComponent<MeshFilter>().sharedMesh;
+
+            var group = go.AddComponent<LODGroup>();
+            group.SetLODs(new[] { new LOD(0.22f, lod0), new LOD(0.10f, r1.ToArray()), new LOD(0.04f, r2.ToArray()) });
+            group.RecalculateBounds();
         }
 
         // ============================================================ materials
@@ -138,10 +174,9 @@ namespace Ward0.EditorTools
             { var a = new Vector2(HalfW, 0.12f); float t = Mathf.Clamp01(s / _wedge); pos = Vector2.Lerp(a, RightFoot, t); inward = new Vector2(-0.45f, 0.9f).normalized; }
         }
 
-        static Mesh BuildShell()
+        static Mesh BuildShell(int N = 96, int M = 60)
         {
             ProfileInit();
-            int N = 96, M = 60;
             var v = new Vector3[(N + 1) * (M + 1)]; var uv = new Vector2[v.Length];
             for (int k = 0; k <= M; k++)
             {
@@ -155,7 +190,7 @@ namespace Ward0.EditorTools
                     float disp = Mathf.Pow(big, 1.2f) * 0.75f + mid * 0.16f;           // carve OUTWARD only (0..~0.6)
                     // chunky facets: quantise a little so the surface reads as broken rock
                     disp = Mathf.Round(disp * 9f) / 9f * 0.65f + disp * 0.35f;
-                    float edge = Mathf.Clamp01(Mathf.Min(i, N - i) / 6f);                // pin the feet so the shell meets the floor
+                    float edge = Mathf.Clamp01(Mathf.Min(i, N - i) / (6f * N / 96f));                // pin the feet so the shell meets the floor
                     pos -= inw * disp * edge;
                     int idx = k * (N + 1) + i;
                     v[idx] = new Vector3(pos.x, pos.y, z); uv[idx] = new Vector2(s * 0.5f, z * 0.5f);
@@ -182,9 +217,9 @@ namespace Ward0.EditorTools
             return m;
         }
 
-        static Mesh BuildFloor()
+        static Mesh BuildFloor(int NX = 56, int NZ = 60)
         {
-            int NX = 56, NZ = 60; float W = 4.6f;
+            float W = 4.6f;
             var v = new Vector3[(NX + 1) * (NZ + 1)]; var uv = new Vector2[v.Length];
             for (int k = 0; k <= NZ; k++)
                 for (int i = 0; i <= NX; i++)
@@ -232,6 +267,7 @@ namespace Ward0.EditorTools
                 float th = Mathf.PI * (j + 0.5f) / seg; float deg = th * Mathf.Rad2Deg + 90f;
                 Vector3 dir = new Vector3(Mathf.Cos(th), Mathf.Sin(th), 0f); Vector3 c = new Vector3(0, CY, z);
                 Box("RustSteel", c + dir * RibR, new Vector3(chord * 1.07f, 0.13f, 0.035f), 0.004f, new Vector3(0, 0, deg));          // web (radial)
+                if (lod > 0) continue;
                 Box("RustSteel", c + dir * (RibR - 0.075f), new Vector3(chord * 1.07f, 0.026f, 0.2f), 0.004f, new Vector3(0, 0, deg)); // inner flange
                 Box("RustSteel", c + dir * (RibR + 0.075f), new Vector3(chord * 1.07f, 0.026f, 0.2f), 0.004f, new Vector3(0, 0, deg)); // outer flange
             }
@@ -239,6 +275,7 @@ namespace Ward0.EditorTools
             {
                 float x = sx * RibR;
                 Box("RustSteel", new Vector3(x, CY / 2, z), new Vector3(0.13f, CY, 0.035f), 0.004f);
+                if (lod > 0) continue;
                 Box("RustSteel", new Vector3(x - sx * 0.075f, CY / 2, z), new Vector3(0.026f, CY, 0.2f), 0.004f);
                 Box("RustSteel", new Vector3(x + sx * 0.075f, CY / 2, z), new Vector3(0.026f, CY, 0.2f), 0.004f);
                 Box("RustDark", new Vector3(x, 0.02f, z), new Vector3(0.36f, 0.04f, 0.36f), 0.008f);                                // foot plate
@@ -247,6 +284,7 @@ namespace Ward0.EditorTools
                 RivetRect(new Vector3(x - sx * 0.096f, CY - 0.05f, z), 0.14f, 0.38f, 2, 4, new Vector3(-sx, 0, 0), Vector3.forward, Vector3.up);
                 Box("RustDark", new Vector3(x, 0.5f, z - 0.115f), new Vector3(0.2f, 0.14f, 0.03f), 0.005f);                            // gusset
             }
+            if (lod > 0) return;
             Box("RustDark", new Vector3(0, CY + RibR - 0.09f, z), new Vector3(0.5f, 0.016f, 0.22f), 0.004f);                           // crown plate
             RivetRect(new Vector3(0, CY + RibR - 0.1f, z), 0.44f, 0.16f, 4, 2, Vector3.down, Vector3.right, Vector3.forward);
         }
@@ -291,6 +329,7 @@ namespace Ward0.EditorTools
             {
                 float z = -2.7f + i * 0.6f;
                 Box("MineWood", new Vector3(R(-0.02f, 0.02f), 0.05f + R(-0.008f, 0.008f), z), new Vector3(1.25f, 0.1f, 0.17f), 0.012f, new Vector3(R(-1f, 1f), R(-2.5f, 2.5f), R(-1f, 1f)));
+                if (lod > 0) continue;
                 foreach (float sx in new[] { -1f, 1f })
                     foreach (float side in new[] { -1f, 1f })
                         Box("RustDark", new Vector3(sx * 0.40f + side * 0.062f, 0.13f, z + R(-0.01f, 0.01f)), new Vector3(0.022f, 0.045f, 0.022f), 0.003f);   // spikes
@@ -322,6 +361,7 @@ namespace Ward0.EditorTools
             const float px = 1.42f, py = 1.12f;
             Cyl("RustSteel", new Vector3(px, py, 0), 0.095f, Len, new Vector3(90, 0, 0), 22, 0.004f);               // main pipe
             Cyl("RustDark", new Vector3(px + 0.04f, 0.72f, 0), 0.05f, Len, new Vector3(90, 0, 0), 16, 0.003f);      // small pipe
+            if (lod > 0) return;
             foreach (float z in new[] { -2.95f, -1.5f, 1.5f, 2.95f })
             {
                 Cyl("RustDark", new Vector3(px, py, z), 0.145f, 0.045f, new Vector3(90, 0, 0), 22, 0.005f);

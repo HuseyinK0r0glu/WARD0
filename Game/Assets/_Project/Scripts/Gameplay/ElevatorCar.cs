@@ -13,5 +13,8 @@ namespace Ward0.Gameplay
         public bool IsUpper => isUpper;
         public Transform StandPoint => standPoint;
         public QuarantineDoor Door => door;
+
+        private void OnEnable() { if (ElevatorSystem.Instance != null) ElevatorSystem.Instance.Register(this); }
+        private void OnDisable() { if (ElevatorSystem.Instance != null) ElevatorSystem.Instance.Unregister(this); }
     }
 }

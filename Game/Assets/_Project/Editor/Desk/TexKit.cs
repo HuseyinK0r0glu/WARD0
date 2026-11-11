@@ -706,7 +706,8 @@ namespace Ward0.EditorTools
             imp.filterMode = FilterMode.Bilinear;
             imp.anisoLevel = 8;
             imp.maxTextureSize = 2048;
-            imp.textureCompression = TextureImporterCompression.Uncompressed;
+            imp.textureCompression = TextureImporterCompression.CompressedHQ;   // BC7 / BC5: ~4-8x less memory and upload than RGBA32
+            imp.crunchedCompression = false;
             imp.SaveAndReimport();
             return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         }

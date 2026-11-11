@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -99,6 +100,13 @@ namespace Ward0.Gameplay
         {
             float b = 0f;
             return Make("whoosh", 1.4f, (t, i) => { float n = Noise(i, 8); b += (n - b) * (0.1f + 0.3f * t / 1.4f); return b * 2.2f * Mathf.Sin(t / 1.4f * 3.14159f); });
+        }
+
+        /// <summary>Generates every synthesised clip once, one per frame, so none of them hitches the frame it is first heard in.</summary>
+        public static IEnumerator PrewarmRoutine()
+        {
+            var all = new System.Func<AudioClip>[] { Drone, Beep, Clank, Hiss, Rumble, Alarm, Whoosh, Growl, Whisper, Heartbeat, () => Step(0), () => Step(1), () => Step(2) };
+            foreach (var make in all) { make(); yield return null; }
         }
 
         /// <summary>Plays a one-shot 3D sound at a position.</summary>

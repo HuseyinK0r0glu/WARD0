@@ -11,6 +11,8 @@ namespace Ward0.Gameplay
 
         private readonly List<Light> _lights = new List<Light>(); private float _t;
 
+        private void OnEnable() { ZoneStreamer.ZonesChanged += Refresh; }
+        private void OnDisable() { ZoneStreamer.ZonesChanged -= Refresh; }
         private void Start() { Refresh(); }
 
         public void Refresh()

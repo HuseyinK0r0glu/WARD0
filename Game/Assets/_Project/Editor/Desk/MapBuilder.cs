@@ -6,6 +6,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.SceneManagement;
 using Ward0.Gameplay;
 using Ward0.Props;
 using static Ward0.EditorTools.DeskBuilder;
@@ -25,14 +26,33 @@ namespace Ward0.EditorTools
         const float Half = 4f;           // chamber half-size
         const float OpenR = 2.05f;       // radius of the arch opening in chamber walls
         const float CY = 1.3f;
+        const string ZoneDir = "Assets/_Project/Scenes/Zones";
         static Combiner map;
-        static Transform worldT, upperT, mineT, sysT;
+        static Transform worldT, upperT, mineT, sysT, coreMineT;   // mineT = the mine zone currently being built; coreMineT = the always-loaded graph
+        // The mine is split into one additive scene per chamber (plus the tunnel segments nearest to it) so it can be streamed in as the player nears it.
+        static readonly string[] ZoneIds = { "N0", "N1", "N2", "N3", "N4", "N5" };
+        static readonly Dictionary<string, Transform> zoneT = new Dictionary<string, Transform>();
+        static readonly Dictionary<string, Combiner> zoneMap = new Dictionary<string, Combiner>();
+        static Combiner upperMap;
         static System.Random rng;
         static readonly Dictionary<string, GameObject> prefabs = new Dictionary<string, GameObject>();
         static readonly Color Cream = new Color(0.74f, 0.71f, 0.63f, 0.95f);
 
         // chamber centres
         static readonly Vector3 P0 = new Vector3(0, 0, 0), P1 = new Vector3(-26, 0, 0), P4 = new Vector3(26, 0, 0), P2 = new Vector3(-26, 0, -20), P3 = new Vector3(0, 0, -20), P5 = new Vector3(26, 0, -20);
+
+        static Vector3 NodePos(string id) { switch (id) { case "N0": return P0; case "N1": return P1; case "N2": return P2; case "N3": return P3; case "N4": return P4; default: return P5; } }
+
+        /// <summary>The chamber whose zone owns a world position (nearest centre, ignoring height).</summary>
+        static string NodeOf(Vector3 p)
+        {
+            string best = ZoneIds[0]; float bd = float.MaxValue;
+            foreach (var id in ZoneIds) { var c = NodePos(id); float d = (c.x - p.x) * (c.x - p.x) + (c.z - p.z) * (c.z - p.z); if (d < bd) { bd = d; best = id; } }
+            return best;
+        }
+
+        /// <summary>Points the mine builders (combined geometry and the parent for props) at one zone.</summary>
+        static void UseZone(string id) { mineT = zoneT[id]; map = zoneMap[id]; }
 
         // ============================================================ helpers (final-space, no mirroring)
         static void AB(string mat, Vector3 min, Vector3 max, float uv = 0.5f, float bevel = 0.02f) => map.Add(MeshKit.Box(max - min, bevel, uv), M(mat), (min + max) * 0.5f);
@@ -45,6 +65,7 @@ namespace Ward0.EditorTools
 
         static GameObject Place(string prefab, Vector3 pos, float yaw, Transform parent, string name = null)
         {
+            if (parent == mineT && zoneT.Count > 0) { UseZone(NodeOf(pos)); parent = mineT; }
             if (!prefabs.TryGetValue(prefab, out var pf)) prefabs[prefab] = pf = AssetDatabase.LoadAssetAtPath<GameObject>(prefab);
             var go = (GameObject)PrefabUtility.InstantiatePrefab(pf, parent); go.transform.position = pos; go.transform.rotation = Quaternion.Euler(0, yaw, 0); if (name != null) go.name = name; return go;
         }
@@ -80,6 +101,7 @@ namespace Ward0.EditorTools
             foreach (var d in new[] { MapRoot, MatDir, MeshDir, MapRoot + "/Textures" }) Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
             PropKit.EnsureMaterials();
+            foreach (var g in AssetDatabase.FindAssets("Map_ t:Mesh", new[] { MeshDir })) AssetDatabase.DeleteAsset(AssetDatabase.GUIDToAssetPath(g));   // re-baked below (old single-mesh bake or an earlier zone bake)
             SavedMeshNames.Clear(); prefabs.Clear(); rng = new System.Random(20261109); Origin = Vector3.zero;
             MapMaterials();
 
@@ -88,20 +110,26 @@ namespace Ward0.EditorTools
             RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared; RenderSettings.fogDensity = 0.022f; RenderSettings.fogColor = new Color(0.02f, 0.024f, 0.03f);
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom; RenderSettings.reflectionIntensity = 0.6f;
 
-            worldT = new GameObject("World").transform; upperT = G("Upper Checkpoint", worldT, Vector3.zero).transform; mineT = G("Mine", worldT, Vector3.zero).transform; sysT = new GameObject("Systems").transform;
-            map = new Combiner();
+            worldT = new GameObject("World").transform; upperT = G("Upper Checkpoint", worldT, Vector3.zero).transform; coreMineT = G("Mine", worldT, Vector3.zero).transform; sysT = new GameObject("Systems").transform;
+            zoneT.Clear(); zoneMap.Clear();
+            foreach (var id in ZoneIds) { zoneT[id] = new GameObject("Zone_" + id).transform; zoneMap[id] = new Combiner(); }
+            upperMap = new Combiner(); UseZone("N0");
 
             var mineMapObj = BuildMine(out var nodes, out var corridors, out var minePlace);
-            var upper = BuildUpper(out var upperRefs);
+            map = upperMap; var upper = BuildUpper(out var upperRefs);
             BakeMap();
             BuildSystems(nodes, corridors, mineMapObj, upperRefs);
 
+            EditorSceneManager.SaveScene(scene, ScenePath);   // an untitled scene cannot have scenes added next to it
+            var zoneScenes = SplitZones(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             var list = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-            bool has = false; foreach (var s in list) if (s.path == ScenePath) has = true;
-            if (!has) { list.Insert(0, new EditorBuildSettingsScene(ScenePath, true)); EditorBuildSettings.scenes = list.ToArray(); }
+            list.RemoveAll(bs => bs.path == ScenePath || bs.path.StartsWith(ZoneDir));
+            list.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
+            for (int i = 0; i < zoneScenes.Count; i++) list.Insert(1 + i, new EditorBuildSettingsScene(zoneScenes[i], true));
+            EditorBuildSettings.scenes = list.ToArray();
             AssetDatabase.SaveAssets();
-            Debug.Log("[Ward0] Game map built: " + ScenePath);
+            Debug.Log("[Ward0] Game map built: " + ScenePath + " + " + zoneScenes.Count + " mine zone scenes");
         }
 
         static void MapMaterials()
@@ -130,7 +158,7 @@ namespace Ward0.EditorTools
         {
             var nodesL = new Dictionary<string, MineNode>(); var corridorsL = new List<MineCorridor>(); var placesL = new Dictionary<string, Transform>();
             nodes = nodesL; corridors = corridorsL; places = placesL;
-            var graph = G("MineGraph", mineT, Vector3.zero);
+            var graph = G("MineGraph", coreMineT, Vector3.zero);
             void Node(string id, string label, Vector3 pos, bool landing = false)
             {
                 var g = G("Node_" + id, graph.transform, pos); var n = g.AddComponent<MineNode>(); n.label = label; n.isLanding = landing; nodesL[id] = n;
@@ -157,11 +185,12 @@ namespace Ward0.EditorTools
 
             // rails through chambers
             foreach (var kv in new Dictionary<string, string> { { "N0", "SEW" }, { "N1", "ENS" }, { "N2", "NEW" }, { "N3", "NWE" }, { "N4", "WSN" }, { "N5", "NWE" } })
-                foreach (char d in kv.Value) TrackStub(nodesL[kv.Key].transform.position, d);
+                foreach (char d in kv.Value) TrackStub(nodesL[kv.Key].transform.position, d);   // TrackStub picks the zone itself
 
             // ---------------- chamber contents
             var c0 = P0; var c1 = P1; var c2 = P2; var c3 = P3; var c4 = P4; var c5 = P5;
             // N0 landing: lower elevator, light, supplies
+            UseZone("N0");
             var lowerCar = Place(P("ElevatorCar"), c0 + new Vector3(0, 0, 5.4f), 0f, mineT, "ElevatorCar_Lower");
             var lowerDoor = PlaceDoor(c0 + new Vector3(0, 0, 3.8f), 0f, mineT, "ElevatorDoor_Lower");
             SetRef(lowerCar.GetComponent<ElevatorCar>(), "door", lowerDoor.GetComponent<QuarantineDoor>());
@@ -175,6 +204,7 @@ namespace Ward0.EditorTools
             Chalk(c0, 'E', -3.1f, 1.7f, 3, 0.8f); Chalk(c0, 'W', 3.1f, 1.7f, 0, 0.9f);
 
             // N1 breaker hall A (repair #1)
+            UseZone("N1");
             var vent1 = Place(P("SteamVent"), c1 + new Vector3(-1.4f, 0, -1.3f), 0f, mineT, "SteamVent_N1");
             var br1 = Place(P("BreakerPanel"), c1 + new Vector3(-3.3f, 0, 0), -90f, mineT, "BreakerPanel_A");
             Station(br1, nodesL["N1"], vent1);
@@ -183,6 +213,7 @@ namespace Ward0.EditorTools
             Place(P("Stalactites"), c1 + new Vector3(0, 4.0f, 0), 0f, mineT);
 
             // N2 pump house (repair #2)
+            UseZone("N2");
             var vent2 = Place(P("SteamVent"), c2 + new Vector3(1.6f, 0, -1.4f), 0f, mineT, "SteamVent_N2");
             var vs = Place(P("ValveStation"), c2 + new Vector3(0, 0, -3.0f), 180f, mineT, "ValveStation_Coolant");
             Station(vs, nodesL["N2"], vent2);
@@ -191,6 +222,7 @@ namespace Ward0.EditorTools
             Chalk(c2, 'N', 3.2f, 1.6f, 1, 1.1f); Chalk(c2, 'E', -3.2f, 1.7f, 4, 0.9f);
 
             // N3 central hub: pillars for cover, carts, signage
+            UseZone("N3");
             AB("MineRock", c3 + new Vector3(1.6f, 0, 1.6f), c3 + new Vector3(2.6f, 4.0f, 2.6f), 0.5f, 0.12f); AB("MineRock", c3 + new Vector3(-2.6f, 0, -2.6f), c3 + new Vector3(-1.6f, 4.0f, -1.6f), 0.5f, 0.12f);
             CartCover(c3, 'S', 0f, mineT, "N3_Cover"); CartCover(c3, 'N', 2.9f, mineT, "N3_CoverB");
             Torch(c3, 'S', -3.3f, 1.9f); Torch(c3, 'S', 3.3f, 1.9f); Torch(c3, 'N', -3.3f, 1.9f);
@@ -198,12 +230,14 @@ namespace Ward0.EditorTools
             PendantLamp("HubLamp", c3 + new Vector3(0, 3.5f, 0), 2.6f, 9f, new Color(1f, 0.7f, 0.4f));
 
             // N4 east hall
+            UseZone("N4");
             Place(P("SupplyCluster"), c4 + new Vector3(3.0f, 0, 0), -90f, mineT, "N4_Supplies");
             CartCover(c4, 'W', -3.1f, mineT, "N4_Cover"); Torch(c4, 'E', -3.2f, 1.9f); Torch(c4, 'E', 3.2f, 1.9f); Torch(c4, 'S', 3.3f, 1.9f);
             Place(P("Stalactites"), c4 + new Vector3(0, 4.0f, 0), 40f, mineT);
             Chalk(c4, 'S', -3.3f, 1.6f, 3, 1.0f); Chalk(c4, 'N', 3.2f, 1.7f, 0, 0.9f);
 
             // N5 gas chamber (repair #3) - gas + dark
+            UseZone("N5");
             var vent5 = Place(P("SteamVent"), c5 + new Vector3(-1.3f, 0, -1.4f), 0f, mineT, "SteamVent_N5");
             var br5 = Place(P("BreakerPanel"), c5 + new Vector3(0f, 0, -3.3f), 180f, mineT, "BreakerPanel_B");
             Station(br5, nodesL["N5"], vent5);
@@ -220,13 +254,14 @@ namespace Ward0.EditorTools
             Place(P("Battery"), new Vector3(26.9f, 0, 9.1f), 0f, mineT, "Battery_D"); Place(P("SupplyCluster"), new Vector3(24.9f, 0, 8.6f), 20f, mineT);
             Chalk(new Vector3(-26, 0, 7), 'N', 0f, 1.6f, 2, 1.4f); Chalk(new Vector3(-33, 0, -20), 'W', 0f, 1.6f, 2, 1.4f);
 
-            foreach (var l in mineT.GetComponentsInChildren<Light>(true))
-            {
-                if (l.name == "Light") { l.intensity *= 2.6f; l.range *= 1.3f; }            // wall torches
-                else if (l.name == "LampLight") { l.intensity *= 2.2f; l.range *= 1.15f; }  // tunnel lamps
-                else if (l.name == "GasGlow") l.intensity *= 1.8f;
-                else if (l.name == "Glow") l.intensity *= 2f;                                // batteries
-            }
+            foreach (var zid in ZoneIds)
+                foreach (var l in zoneT[zid].GetComponentsInChildren<Light>(true))
+                {
+                    if (l.name == "Light") { l.intensity *= 2.6f; l.range *= 1.3f; }            // wall torches
+                    else if (l.name == "LampLight") { l.intensity *= 2.2f; l.range *= 1.15f; }  // tunnel lamps
+                    else if (l.name == "GasGlow") l.intensity *= 1.8f;
+                    else if (l.name == "Glow") l.intensity *= 2f;                                // batteries
+                }
             // corridor markers for the swap system
             var mapObj = graph;
             return mapObj;
@@ -234,6 +269,7 @@ namespace Ward0.EditorTools
 
         static void StationLight(GameObject station, Color col)
         {
+            UseZone(NodeOf(station.transform.position));
             var g = G("StationLight", mineT, station.transform.position + new Vector3(0, 2.6f, 0) + (station.transform.rotation * new Vector3(0, 0, -1.6f)));
             var l = g.AddComponent<Light>(); l.type = LightType.Point; l.color = col; l.intensity = 7f; l.range = 6.5f; l.shadows = LightShadows.None; g.AddComponent<FlickerLight>();
         }
@@ -241,7 +277,7 @@ namespace Ward0.EditorTools
         static void Station(GameObject station, MineNode node, GameObject vent)
         {
             StationLight(station, node.label.Contains("Gas") ? new Color(0.75f, 1f, 0.6f) : new Color(1f, 0.85f, 0.6f));
-            var rs = station.GetComponent<RepairStation>(); SetRef(rs, "node", node); SetRef(rs, "steam", vent.GetComponent<SteamBurst>());
+            var rs = station.GetComponent<RepairStation>(); SetRef(rs, "steam", vent.GetComponent<SteamBurst>());   // its node lives in the core scene and is resolved at runtime (a zone scene cannot reference another scene)
         }
 
         static GameObject PlaceDoor(Vector3 pos, float yaw, Transform parent, string name)
@@ -251,6 +287,7 @@ namespace Ward0.EditorTools
 
         static void PendantLamp(string name, Vector3 pos, float intensity, float range, Color col)
         {
+            UseZone(NodeOf(pos));
             var g = G(name, mineT, pos); var l = g.AddComponent<Light>(); l.type = LightType.Point; l.color = col; l.intensity = intensity; l.range = range; l.shadows = LightShadows.Soft; g.AddComponent<FlickerLight>();
             map.Add(MeshKit.Cylinder(0.03f, 0.6f, 8, 0.002f), M("Rubber"), pos + new Vector3(0, 0.55f, 0));
             map.Add(MeshKit.Sphere(0.07f, 14, 10, 1.1f), M("LampBulb"), pos);
@@ -264,6 +301,7 @@ namespace Ward0.EditorTools
 
         static void Chalk(Vector3 c, char wall, float u, float y, int kind, float size)
         {
+            UseZone(NodeOf(c));
             var q = GameObject.CreatePrimitive(PrimitiveType.Quad); Object.DestroyImmediate(q.GetComponent<Collider>());
             q.name = "Chalk_" + kind; q.transform.SetParent(mineT, false);
             q.transform.position = c + Dir(wall) * (Half - 0.5f - 0.01f) + Perp(wall) * u + Vector3.up * y; q.transform.rotation = Quaternion.Euler(0, InwardYaw(wall), Random.Range(-8f, 8f)); q.transform.localScale = Vector3.one * size;
@@ -273,6 +311,7 @@ namespace Ward0.EditorTools
         /// <summary>Minecart parked a little away from a wall with a hide zone in the gap behind it.</summary>
         static void CartCover(Vector3 c, char wall, float u, Transform parent, string name)
         {
+            UseZone(NodeOf(c)); parent = mineT;
             var d = Dir(wall); var p = Perp(wall);
             float yaw = (wall == 'N' || wall == 'S') ? 90f : 0f;
             Place(P("Minecart"), c + d * 2.15f + p * u, yaw, parent, name);
@@ -282,6 +321,7 @@ namespace Ward0.EditorTools
 
         static void TrackStub(Vector3 c, char dir)
         {
+            UseZone(NodeOf(c));
             var d = Dir(dir); var p = Perp(dir); float yaw = (dir == 'N' || dir == 'S') ? 0f : 90f;
             for (int i = 0; i < 7; i++)
             {
@@ -300,6 +340,7 @@ namespace Ward0.EditorTools
         // ---------------------------------------------------------- chambers
         static void Chamber(string id, Vector3 c, char special, string openings)
         {
+            UseZone(id);
             float e = Half + 0.5f;
             AB("MineFloor", c + new Vector3(-e, -0.6f, -e), c + new Vector3(e, 0f, e), 0.5f, 0.03f);
             AB("MineRock", c + new Vector3(-e, 4.0f, -e), c + new Vector3(e, 4.8f, e), 0.5f, 0.05f);
@@ -364,6 +405,7 @@ namespace Ward0.EditorTools
             SetBool(seg.GetComponent<MineTunnelSegment>(), "lampStartsOn", false);
             // rock cap sealing the dead end
             var end = edge + dir * 6.05f; var p = Perp(dir.z != 0 ? 'N' : 'E');
+            UseZone(NodeOf(end));
             Vector3 a = end - p * 3.2f, b = end + p * 3.2f + dir * 0.7f + Vector3.up * 4.8f; a.y = -0.6f;
             AB("MineRock", Vector3.Min(a, b), Vector3.Max(a, b), 0.5f, 0.05f);
         }
@@ -426,8 +468,8 @@ namespace Ward0.EditorTools
             Text("TECHNICIAN STATION  //  SHIFT 07", new Vector3(0, Y0 + 2.9f, 2.97f), new Vector3(0, 0, 0), 0.07f, upperT, 7f, TextAlignmentOptions.Center, new Color(0.9f, 0.75f, 0.3f), 5f);
             Text("AIRLOCK", new Vector3(5.9f, Y0 + 3.05f, -4.99f), new Vector3(0, 180, 0), 0.14f, upperT, 3f, TextAlignmentOptions.Center, new Color(0.9f, 0.75f, 0.3f), 6f);
             Text("CELL A  //  CONTAINMENT", new Vector3(3.96f, Y0 + 3.0f, 0.4f), new Vector3(0, 90, 0), 0.09f, upperT, 4f, TextAlignmentOptions.Center, Cream, 4f);
-            Text("MINE LEVEL 7  >>  ELEVATOR", new Vector3(-3.95f, Y0 + 3.1f, -2f), new Vector3(0, -90, 0), 0.08f, upperT, 3.2f, TextAlignmentOptions.Center, new Color(0.9f, 0.75f, 0.3f), 4f);
-            Text("CLEAR  -  INCINERATE\nTRUST THE SCANNERS", new Vector3(0.0f, Y0 + 2.2f, 2.97f), new Vector3(0, 0, 0), 0.075f, upperT, 4f, TextAlignmentOptions.Center, Cream, 3f);
+            Text("ELEVATOR  >>  MINE LEVEL 7", new Vector3(-3.95f, Y0 + 3.1f, -2f), new Vector3(0, -90, 0), 0.08f, upperT, 3.2f, TextAlignmentOptions.Center, new Color(0.9f, 0.75f, 0.3f), 4f);
+            Text("SCAN  >  ANALYSE\nCLEAR OR INCINERATE", new Vector3(0.0f, Y0 + 2.2f, 2.97f), new Vector3(0, 0, 0), 0.075f, upperT, 4f, TextAlignmentOptions.Center, Cream, 3f);
 
             // glass between booth and cell
             var glass = GameObject.CreatePrimitive(PrimitiveType.Quad); Object.DestroyImmediate(glass.GetComponent<Collider>()); glass.name = "ObservationGlass"; glass.transform.SetParent(upperT, false);
@@ -447,13 +489,25 @@ namespace Ward0.EditorTools
             // cell dressing: drain, benches, restraints, biohazard decals
             AB("RustDark", new Vector3(11.7f, Y0, -2.0f), new Vector3(12.4f, Y0 + 0.5f, 4.6f)); AB("RustSteel", new Vector3(11.65f, Y0 + 0.5f, -2.0f), new Vector3(12.45f, Y0 + 0.56f, 4.6f));
             var bio = GameObject.CreatePrimitive(PrimitiveType.Quad); Object.DestroyImmediate(bio.GetComponent<Collider>()); bio.transform.SetParent(upperT, false); bio.name = "BiohazardWall";
-            bio.transform.position = new Vector3(12.48f, Y0 + 2.0f, 1.4f); bio.transform.rotation = Quaternion.Euler(0, 90, 0); bio.transform.localScale = Vector3.one * 1.6f; bio.GetComponent<MeshRenderer>().sharedMaterial = M("BioYellow");
+            bio.transform.position = new Vector3(12.48f, Y0 + 2.2f, 3.9f);   // off the sightline from the observation glass to the miner
+            bio.transform.rotation = Quaternion.Euler(0, 90, 0); bio.transform.localScale = Vector3.one * 1.2f; bio.GetComponent<MeshRenderer>().sharedMaterial = M("BioYellow");
 
             // miner spawn (faces the glass)
             R.minerSpawn = G("MinerSpawn", upperT, new Vector3(8.5f, Y0 + 0.02f, 1.2f), new Vector3(0, -90, 0));
 
             // ---- desk
             var desk = Place("Assets/_Project/Art/Desk/QuarantineDesk.prefab", new Vector3(0.0f, Y0, 1.7f), 0f, upperT, "QuarantineDesk"); R.desk = desk;
+
+            // ---- instrument table beside the desk: the technician's two hand tools (concept art: UV/Thermal Bio-Scanner, Pneumatic Blood Extractor)
+            const float tx = -2.35f, tz = 1.5f, th = 0.82f;
+            AB("DDark", new Vector3(tx - 0.62f, Y0 + th - 0.04f, tz - 0.32f), new Vector3(tx + 0.62f, Y0 + th, tz + 0.32f), 0.5f, 0.012f);
+            AB("RustSteel", new Vector3(tx - 0.62f, Y0 + th, tz - 0.32f), new Vector3(tx + 0.62f, Y0 + th + 0.006f, tz + 0.32f), 0.5f, 0.002f);
+            AB("RustDark", new Vector3(tx - 0.58f, Y0 + 0.3f, tz - 0.28f), new Vector3(tx + 0.58f, Y0 + 0.33f, tz + 0.28f), 0.5f, 0.01f);
+            foreach (float sx in new[] { -1f, 1f }) foreach (float sz in new[] { -1f, 1f })
+                AB("RustDark", new Vector3(tx + sx * 0.57f - 0.025f, Y0, tz + sz * 0.27f - 0.025f), new Vector3(tx + sx * 0.57f + 0.025f, Y0 + th - 0.04f, tz + sz * 0.27f + 0.025f), 0.5f, 0.006f);
+            Place(P("BioScanner"), new Vector3(tx - 0.3f, Y0 + th + 0.006f, tz - 0.02f), 14f, upperT, "BioScanner");
+            Place(P("BloodExtractor"), new Vector3(tx + 0.28f, Y0 + th + 0.006f, tz - 0.02f), -10f, upperT, "BloodExtractor");
+            PointLight("ToolLamp", upperT, new Vector3(tx, Y0 + 1.55f, tz - 0.35f), new Color(1f, 0.86f, 0.62f), 1.4f, 3.2f, false);
 
             // ---- doors: airlock (booth side), airlock inner (to cell), elevator
             var d1 = PlaceDoor(new Vector3(4.2f, Y0, -3.6f), 90f, upperT, "AirlockDoor_Outer");
@@ -470,14 +524,40 @@ namespace Ward0.EditorTools
         // ============================================================ combine static geometry
         static void BakeMap()
         {
-            foreach (var kv in map.Bake("Map"))
+            BakeInto(upperMap, upperT, "Upper");
+            foreach (var id in ZoneIds) BakeInto(zoneMap[id], zoneT[id], id);
+        }
+
+        /// <summary>Bakes one area into one mesh per material under its own root, so each area culls (and streams) on its own.</summary>
+        static void BakeInto(Combiner area, Transform parent, string tag)
+        {
+            foreach (var kv in area.Bake("Map_" + tag))
             {
-                string path = SaveMesh(kv.Value, "Map_" + kv.Key.name);
-                var g = G("Geo_" + kv.Key.name, worldT, Vector3.zero);
+                string path = SaveMesh(kv.Value, "Map_" + tag + "_" + kv.Key.name);
+                var g = G("Geo_" + kv.Key.name, parent, Vector3.zero);
                 var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
                 g.AddComponent<MeshFilter>().sharedMesh = mesh; g.AddComponent<MeshRenderer>().sharedMaterial = kv.Key;
                 if (kv.Key.name != "PanelGlow" && kv.Key.name != "LampBulb" && kv.Key.name != "RedGlow" && kv.Key.name != "IncGlow" && kv.Key.name != "Chalk0") g.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
+        }
+
+        /// <summary>Moves each zone root into its own scene file and returns the saved scene paths (in zone order).</summary>
+        static List<string> SplitZones(Scene core)
+        {
+            Directory.CreateDirectory(ZoneDir);
+            foreach (var f in Directory.GetFiles(ZoneDir, "Ward0_Mine_*.unity")) AssetDatabase.DeleteAsset(f.Replace('\\', '/'));
+            var paths = new List<string>();
+            foreach (var id in ZoneIds)
+            {
+                string path = ZoneDir + "/Ward0_Mine_" + id + ".unity";
+                var zs = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+                SceneManager.MoveGameObjectToScene(zoneT[id].gameObject, zs);
+                EditorSceneManager.SaveScene(zs, path);
+                EditorSceneManager.CloseScene(zs, true);
+                paths.Add(path);
+            }
+            SceneManager.SetActiveScene(core);
+            return paths;
         }
 
         // ============================================================ systems: player, managers, post-processing
@@ -489,7 +569,7 @@ namespace Ward0.EditorTools
             var cc = player.AddComponent<CharacterController>(); cc.height = 1.75f; cc.radius = 0.3f; cc.center = new Vector3(0, 0.875f, 0); cc.stepOffset = 0.35f; cc.skinWidth = 0.04f;
             var camRoot = G("CameraRoot", player.transform, new Vector3(0, 1.6f, 0));
             var cam = camRoot.AddComponent<Camera>(); cam.fieldOfView = 72f; cam.nearClipPlane = 0.04f; cam.farClipPlane = 120f; cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = Color.black; camRoot.tag = "MainCamera";
-            camRoot.AddComponent<AudioListener>(); var ac = camRoot.AddComponent<UniversalAdditionalCameraData>(); ac.renderPostProcessing = true; ac.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            camRoot.AddComponent<AudioListener>(); var ac = camRoot.AddComponent<UniversalAdditionalCameraData>(); ac.renderPostProcessing = true; ac.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing; ac.antialiasingQuality = AntialiasingQuality.Medium;
             var pc = player.AddComponent<PlayerController>(); SetRef(pc, "cameraRoot", camRoot.transform);
             var inter = camRoot.AddComponent<Interactor>(); SetRef(inter, "player", pc);
             var torch = G("Torch", camRoot.transform, new Vector3(0.12f, -0.1f, 0.15f)); var sl = torch.AddComponent<Light>(); sl.type = LightType.Spot; sl.spotAngle = 62f; sl.innerSpotAngle = 28f; sl.range = 22f; sl.intensity = 26f; sl.color = new Color(1f, 0.93f, 0.8f); sl.shadows = LightShadows.Soft; sl.enabled = false;
@@ -499,7 +579,7 @@ namespace Ward0.EditorTools
 
             // ---- post processing
             var vp = ScriptableObject.CreateInstance<VolumeProfile>();
-            var bloom = vp.Add<Bloom>(true); bloom.intensity.Override(0.6f); bloom.threshold.Override(1.0f); bloom.scatter.Override(0.65f);
+            var bloom = vp.Add<Bloom>(true); bloom.intensity.Override(0.6f); bloom.threshold.Override(1.0f); bloom.scatter.Override(0.65f); bloom.highQualityFiltering.Override(false);
             var tone = vp.Add<Tonemapping>(true); tone.mode.Override(TonemappingMode.ACES);
             var vig = vp.Add<Vignette>(true); vig.intensity.Override(0.3f); vig.smoothness.Override(0.55f);
             var ca = vp.Add<ChromaticAberration>(true); ca.intensity.Override(0f);
@@ -519,7 +599,7 @@ namespace Ward0.EditorTools
 
             var elevator = new GameObject("Elevator System").AddComponent<ElevatorSystem>(); elevator.transform.SetParent(sysT);
             SetRef(elevator, "upperCar", R.upperCar.GetComponent<ElevatorCar>());
-            var lowerCar = GameObject.Find("ElevatorCar_Lower"); SetRef(elevator, "lowerCar", lowerCar.GetComponent<ElevatorCar>());
+            // the lower car lives in the N0 zone scene and registers itself with the ElevatorSystem when that zone loads
 
             var hudObj = new GameObject("HUD").AddComponent<HudOverlay>(); hudObj.transform.SetParent(sysT);
             SetRef(hudObj, "interactor", inter); SetRef(hudObj, "player", pc); SetRef(hudObj, "flashlight", fl);
@@ -551,6 +631,12 @@ namespace Ward0.EditorTools
             SetRef(shift, "elevator", elevator); SetRef(shift, "director", dir); SetRef(shift, "hud", hudObj);
             SetRef(shift, "incineratorFire", R.fire.GetComponentInChildren<ParticleSystem>()); SetRef(shift, "incineratorLight", R.fireLight);
             var alarm = new List<Object>(); foreach (var l in R.alarm) alarm.Add(l); SetArr(shift, "alarmLights", alarm);
+
+            var zs = new GameObject("Zone Streamer").AddComponent<ZoneStreamer>(); zs.transform.SetParent(sysT);
+            SetRef(zs, "player", pc); SetRef(zs, "map", mapComp);
+            var zso = new SerializedObject(zs); var za = zso.FindProperty("zones"); za.arraySize = ZoneIds.Length;
+            for (int i = 0; i < ZoneIds.Length; i++) { var e = za.GetArrayElementAtIndex(i); e.FindPropertyRelative("sceneName").stringValue = "Ward0_Mine_" + ZoneIds[i]; e.FindPropertyRelative("node").objectReferenceValue = nodes[ZoneIds[i]]; }
+            zso.ApplyModifiedPropertiesWithoutUndo();
 
             var lb = new GameObject("Lamp Budget").AddComponent<LampBudget>(); lb.transform.SetParent(sysT); SetRef(lb, "player", player.transform);
         }

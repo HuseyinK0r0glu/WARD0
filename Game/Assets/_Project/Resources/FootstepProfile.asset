@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d06f3b2158fb5a140af0bf0e6dde6905, type: 3}
+  m_Name: FootstepProfile
+  m_EditorClassIdentifier: Assembly-CSharp::Ward0.Gameplay.FootstepProfile
+  metal:
+  - {fileID: 8300000, guid: c6af7a7ad2d9f24438377a9d95016c28, type: 3}
+  - {fileID: 8300000, guid: ae332fa419a796946aaa5ec173c8f02a, type: 3}
+  - {fileID: 8300000, guid: 5a0efab708f2f014abd9e10c5c391cf4, type: 3}
+  - {fileID: 8300000, guid: 73088f201aa26eb4cb58b1ce1375e1e6, type: 3}
+  - {fileID: 8300000, guid: 955b32e87ba102740be823367b7e661d, type: 3}
+  - {fileID: 8300000, guid: cd32513a1a0d1774183d2e4a736514eb, type: 3}
+  - {fileID: 8300000, guid: 32b9fa6a5de33284a998edebce39088d, type: 3}
+  - {fileID: 8300000, guid: a1adfb78729644d4fb3a00951c49e06b, type: 3}
+  - {fileID: 8300000, guid: 259dfacb91857d241bb8e579d659286f, type: 3}
+  - {fileID: 8300000, guid: 752c744b152575b42b93cc59c6ab62ea, type: 3}
+  - {fileID: 8300000, guid: 1935834f91e47f7408b0e3db9f957122, type: 3}
+  - {fileID: 8300000, guid: 62cd66aa1af76fd4f8b56b0b1318aad0, type: 3}
+  - {fileID: 8300000, guid: 081a0c90029b0084191572345d91037e, type: 3}
+  - {fileID: 8300000, guid: b9b85c3f0a1239a419948c0bb6644aad, type: 3}
+  - {fileID: 8300000, guid: 86cf076246d98cb46970e82aded50ea5, type: 3}
+  - {fileID: 8300000, guid: 9704d9fe9f42ab84a9485341670e1899, type: 3}
+  - {fileID: 8300000, guid: 59910177fc23382439d45a8f3d53b724, type: 3}
+  - {fileID: 8300000, guid: b71b74bdaf1019444b80c1a37a2985d7, type: 3}
+  - {fileID: 8300000, guid: c559b11f73333da489d8f8b8e5366496, type: 3}
+  - {fileID: 8300000, guid: c3bd87e3e3591a84db1c1e11d33a6274, type: 3}
+  - {fileID: 8300000, guid: 3f67b8b692c3fde499db04fb1209e389, type: 3}
+  - {fileID: 8300000, guid: 36b86e66e1f09f042bfc5353f0814598, type: 3}
+  - {fileID: 8300000, guid: 7b9c2f52ebd25a54a94c15cd37c9313b, type: 3}
+  - {fileID: 8300000, guid: f50b9c62d94682241b80fc6f3c820666, type: 3}
+  - {fileID: 8300000, guid: ba2b3227bb5f1f74c8c50d3bed74a4be, type: 3}
+  gravel:
+  - {fileID: 8300000, guid: 9efd430a514de7a4cb257599ce17fc8f, type: 3}
+  - {fileID: 8300000, guid: 6287a6ea2fa03f4448f6b3162ba5f492, type: 3}
+  - {fileID: 8300000, guid: 9ee3206e8a6dab04bb3c2619debf0147, type: 3}
+  - {fileID: 8300000, guid: 89e54cc6959fa9e469f91ba0ad3d5a3e, type: 3}
+  - {fileID: 8300000, guid: 83cabf23f87ef734aaf3175fe7fc7c05, type: 3}
+  - {fileID: 8300000, guid: 012c791cc3524774e8014ba3fcb926c2, type: 3}
+  - {fileID: 8300000, guid: 2bbe5d8e6bf232043940e94ce2a554fb, type: 3}
+  - {fileID: 8300000, guid: c41bb5857ab83fd4ab3bbca83245b98f, type: 3}
+  - {fileID: 8300000, guid: 0535fd45871856542a0752d2bb3a51c0, type: 3}
+  puddle:
+  - {fileID: 8300000, guid: 9923a2f615a58804392ec3c864ef7294, type: 3}
+  - {fileID: 8300000, guid: 540f7fced510c0e4cbe826cdd9b03b63, type: 3}
+  - {fileID: 8300000, guid: ade253c5976209a4d904be0df95546aa, type: 3}
+  walk:
+    volumeMin: 0.9
+    volumeMax: 1
+    pitchMin: 0.94
+    pitchMax: 1.06
+  sprint:
+    volumeMin: 0.92
+    volumeMax: 1
+    pitchMin: 0.96
+    pitchMax: 1.08
+  crouch:
+    volumeMin: 0.85
+    volumeMax: 1
+    pitchMin: 0.9
+    pitchMax: 1

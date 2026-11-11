@@ -1,0 +1,3 @@
+Footstep recordings: CC0 (public domain) from OpenGameArt.
+- Metal_*: "metal footsteps on concrete" by Thimras (CC0)
+- Gravel_*, Puddle_*: "different steps on wood, stone, leaves, gravel and mud" by [kdd] (CC0); pitch-shifted variants

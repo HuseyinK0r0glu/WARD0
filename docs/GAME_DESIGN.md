@@ -94,6 +94,7 @@ The deck calls these two sources *guilt* (permanent) and *gas* (temporary). Cros
 - **Logo:** industrial mine-stencil typography with a red biohazard icon.
 - **Environment:** modular mine pack for the armored booth and task-specific tunnels, with navigation landmarks.
 - **Miners:** Outlast-inspired Mixamo rigs for blood draws and FOV patrols.
+- **Character direction (built):** realistic-proportion miners generated in code (`CharacterKit`, `CharacterTex`; menu `Ward0 > Characters`) with a Mixamo-named skinned rig, 3 LODs (cell miner ~16k / 4k / 1k tris, patrol ~8k / 3.5k / 1k) and PBR sets (albedo, normal, metallic-smoothness, emission). References: dirty reflective-banded jumpsuit (navy / orange / olive / khaki variants, hard hat, harness, respirator) and the infected look (veined grey-purple skin with a dim emission mask for the future UV shader, bloodshot glowing eyes). One prefab holds all variants; `MinerVariant` picks the look deterministically per spawn and infection swaps the skin and eye materials at runtime. Patrol enemy is a hunched variant on the same rig. Licence: everything is procedurally generated in this repo, no third-party content. To use real models later (e.g. Meshy), keep the bone names and the `MinerSubject`/`PatrolEnemy` hooks.
 - **Diegetic feedback:** physical CRT scanners plus URP vignette, sway and 3D whispers — no flat HUD.
 - **Smart asset pipeline:** combine existing modular mine and bio-scanner packs with custom shaders.
 
@@ -130,9 +131,15 @@ Built entirely from the procedural props via **Ward0 > Build Game Map** (order: 
 
 ### Shift flow
 1. **Triage (3 miners):** power the desk, run X-ray / bioscan / analysis (infected miners show anomalous scans and swing the gauge needles into the red), then CLEAR (toggle) or INCINERATE (lever). Clear an infected miner = fatal ambush. Incinerate a healthy one = permanent sanity loss.
-2. **Breakdown:** alarm; the elevator unlocks.
+2. **Breakdown:** alarm; the elevator (cage on the west side of the booth, call button inside) unlocks. Before that the call button refuses and says how many miners are left to process.
 3. **Mine:** repair 3 systems (hold E, loud) inside the reactor timer. Each repair vents a steam burst that blinds you while the corridor behind you collapses (graph-checked so you are never trapped).
 4. **Return** to the lower elevator to finish the shift.
+
+### On-screen text and hints
+- All player-facing strings live in `GameText` (one static class, localisation-ready); gameplay scripts never hold literal messages. Tone: cold, clinical, short; every message says what happened, why and the next action.
+- Messages are queued (important ones are never overwritten by routine ones), drawn on a dark plate with a coloured border: cream = info, amber = warning, red = danger, green = success. The overlay is feedback and instructions only; all gameplay information stays diegetic.
+- `HintDirector` shows ONE contextual instruction at the bottom of the screen, driven by real state. Scanner flow: 1/4 MAIN POWER on, 2/4 X-RAY and BIOSCAN on, 3/4 ANALYSIS (wait for the readout), 4/4 CLEAR the healthy / INCINERATE the infected. The first miner gets the full wording, later miners a short reminder. Rings mark the desk controls to use next. After the breakdown (Descent) and on the way back (Return) a waypoint with distance points at the elevator. Mine hints: find a breaker or valve and hold E, stay low, hide behind carts when spotted, leave the gas.
+- Hints are on by default; **H** toggles them (open question resolved: toggle, default on).
 
 ### Difficulty levers
 - Reactor timer (default 600 s), 3 holds-to-repair that make noise, patrols that scale 1 -> 3 with each repair, corridor collapses that force new routes.
@@ -142,7 +149,21 @@ Built entirely from the procedural props via **Ward0 > Build Game Map** (order: 
 - Stamina limits sprinting; crouch + hide zones behind minecarts.
 
 ### Controls
-WASD move, Shift sprint, Ctrl / C crouch, E interact (hold to repair), F torch, R restart after a result screen, F1 debug overlay, Esc releases the mouse.
+WASD move, Space jump (costs a little stamina, lands with a footstep-sized noise), Shift sprint, Ctrl / C crouch, V third-person view of your own technician (toggle), E interact (hold to repair), F torch, H toggle hints, R restart after a result screen, F1 debug overlay, Esc releases the mouse.
 
 ### Where to tune
 `ShiftManager` (miners, repairs, timer, infected pattern), `SanitySystem` (loss and drain rates), `PatrolEnemy` (speed, view range, detect time), `EnemyDirector` (spawn interval and distance), `PlayerController` (speeds, stamina), `FlashlightController` (battery).
+
+### Audio / footsteps
+- Surfaces: **Metal** (bunker floor, elevator), **Gravel** (mine floor, rock, timber), **Puddle** (any `Puddle` material with a collider). `FootstepPlayer` raycasts down each step and reads the hit renderer's material name (falls back to height: above y 15 = metal).
+- **Recorded footsteps (current):** real CC0 recordings in `Assets/_Project/Audio/Footsteps` (credits in `CREDITS.txt` there): 25 metal-on-concrete steps (Thimras, OpenGameArt), and gravel / stone / mud steps (kdd, OpenGameArt) with pitch-shifted variants. `Ward0 > Audio > Build Footstep Profile` fills `Resources/FootstepProfile.asset` from those folders; `FootstepPlayer` picks a non-repeating clip per step with per-stance pitch/volume. Volume follows `PlayerController.NoiseRadius` (sprint 11 m full, walk about half, crouch about a quarter). Jumping adds a take-off and a landing step (landing loudness grows with fall speed).
+- Why recordings: the usual approach in horror games (Frictional's Amnesia / SOMA, Outlast) is layered Foley recordings per surface, with many variations so steps never repeat; SOMA ships over 2000 footstep sounds. The synthesised steps (`FootstepSynth`) were judged poor and now only serve as a fallback for a surface with no clips.
+- Call `StartCoroutine(FootstepSynth.PrewarmRoutine())` during loading to build the clips without a first-step hitch.
+
+### Performance and streaming
+- **Measured cause of the lag (editor baseline):** a 2.8 s first frame plus ~0.6 s of 30-110 ms hitches at launch; each 6 m tunnel segment was ~63k triangles (22 segments = 1.4M of the scene's 1.76M) redrawn in 24 point-light shadow maps; textures were saved uncompressed (~250 MB); 65 lights and ~700 renderers live from frame one.
+- **Streaming:** `Ward0_Map` (core) holds the checkpoint, systems and the mine *graph* (nodes, corridors, cave-in gates). The mine is six additive scenes in `Scenes/Zones/` (`Ward0_Mine_N0..N5`, one chamber plus the tunnel segments nearest to it), generated by `Build Game Map`. `ZoneStreamer` loads nothing in the mine while the player is upstairs, prepares the landing zone and its neighbours during the breakdown, and the elevator waits (behind its fade) until they are ready. In the mine the current chamber and its neighbours stay loaded, the rest unload after 8 s; one load/unload at a time at a low integration budget. Patrols only spawn in loaded zones and despawn when theirs unloads.
+- **Rules for zone content:** a zone scene must not hold serialized references to the core scene (or the reverse). The lower elevator car registers itself with `ElevatorSystem`; `RepairStation` resolves its `MineNode` at runtime.
+- **Tunnel LODs:** LOD0 unchanged (63k), LOD1 ~8k, LOD2 ~1k; the LOD1 shell/floor double as the colliders.
+- **Lights:** `LampBudget` allows 2 shadow-casting point lamps (12 cube faces) instead of 24+; the URP shadow atlas and tiers are sized for that (`Ward0 > Apply Performance Settings`, also compresses generated textures; `TexKit.Save` now imports compressed).
+- **Audio:** synthesised clips are generated one per frame behind the intro fade (`AudioWarmup`), which also starts the mine ambience (the scene could not serialise the runtime clip, so it never played).

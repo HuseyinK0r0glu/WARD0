@@ -19,10 +19,12 @@ namespace Ward0.Gameplay
         [SerializeField] private float detectSeconds = 1.25f;
         [SerializeField] private float eyeHeight = 1.65f;
         [SerializeField] private Transform armL, armR, bodyVisual;
+        [Header("Rig (optional, for the walk cycle)")]
+        [SerializeField] private Transform hips, chest, head, legL, legR, kneeL, kneeR, forearmL, forearmR;
 
         private MineMap _map; private PlayerController _player; private MineNode _from, _to; private int _turn;
         private float _pause, _detect, _look, _growlCool, _unseenFor, _noticed, _anim;
-        private bool _caught;
+        private bool _caught; private float _gait; private Vector3 _hipsBase;
         private Vector3 _heading = Vector3.forward;
 
         public float Detection => _detect;
@@ -33,7 +35,10 @@ namespace Ward0.Gameplay
         {
             _map = map; _player = player; _from = start; _turn = turnSeed; transform.position = start.FloorPoint;
             _to = null; _pause = 0.3f; _detect = 0f;
+            var look = GetComponent<MinerVariant>(); if (look != null) look.Apply(true, turnSeed);
         }
+
+        private void Awake() { if (hips != null) _hipsBase = hips.localPosition; }
 
         private void OnEnable() { All.Add(this); NoiseEvents.Emitted += OnNoise; }
         private void OnDisable() { All.Remove(this); NoiseEvents.Emitted -= OnNoise; if (All.Count == 0) MaxDetection = 0f; }
@@ -128,11 +133,33 @@ namespace Ward0.Gameplay
 
         private void Animate()
         {
-            _anim += Time.deltaTime * (_pause > 0f ? 1.5f : 4.5f);
-            float s = Mathf.Sin(_anim);
-            if (armL != null) armL.localRotation = Quaternion.Euler(-70f + s * 18f, 0, 8f);
-            if (armR != null) armR.localRotation = Quaternion.Euler(-60f - s * 22f, 0, -8f);
-            if (bodyVisual != null) bodyVisual.localRotation = Quaternion.Euler(8f + Mathf.Sin(_anim * 0.5f) * 3f, 0, Mathf.Sin(_anim * 0.5f) * 4f);
+            bool walking = _pause <= 0f && _to != null;
+            _gait = Mathf.MoveTowards(_gait, walking ? 1f : 0f, Time.deltaTime * 3.5f);
+            _anim += Time.deltaTime * Mathf.Lerp(1.3f, 4.6f, _gait);
+            Pose(_anim, _gait);
+        }
+
+        /// <summary>Stooped, long-armed shamble driven straight onto the bones: leg swing, knee flex, counter-swinging arms, hip bob, head sway. gait 0 = idle, 1 = walking.</summary>
+        public void Pose(float phase, float gait)
+        {
+            float s = Mathf.Sin(phase), c = Mathf.Cos(phase), sl = Mathf.Sin(phase + Mathf.PI), cl = Mathf.Cos(phase + Mathf.PI);
+            float n = Mathf.PerlinNoise(phase * 0.35f, 3.1f) - 0.5f;
+            if (armL != null) armL.localRotation = Quaternion.Euler(-26f + s * 24f * gait + n * 8f, 0, 10f);
+            if (armR != null) armR.localRotation = Quaternion.Euler(-30f - s * 24f * gait - n * 8f, 0, -10f);
+            if (forearmL != null) forearmL.localRotation = Quaternion.Euler(-24f - Mathf.Max(0f, s) * 14f * gait, 0, 0);
+            if (forearmR != null) forearmR.localRotation = Quaternion.Euler(-30f - Mathf.Max(0f, -s) * 14f * gait, 0, 0);
+            if (bodyVisual != null) bodyVisual.localRotation = Quaternion.Euler(6f + Mathf.Sin(phase * 2f) * 2.5f * gait + n * 4f, s * 7f * gait, s * 3f * gait + Mathf.Sin(phase * 0.5f) * 3f);
+            if (chest != null) chest.localRotation = Quaternion.Euler(5f, -s * 6f * gait, -s * 2f * gait);
+            if (head != null) head.localRotation = Quaternion.Euler(-4f + Mathf.Sin(phase * 1.7f) * 3f * gait, Mathf.Sin(phase * 0.5f) * (10f + 14f * (1f - gait)), Mathf.PerlinNoise(phase * 0.9f, 7.7f) * 22f - 11f);
+            if (legL != null) legL.localRotation = Quaternion.Euler(-s * 27f * gait, 0, 0);
+            if (legR != null) legR.localRotation = Quaternion.Euler(-sl * 27f * gait, 0, 0);
+            if (kneeL != null) kneeL.localRotation = Quaternion.Euler(Mathf.Max(0f, c) * 42f * gait + 5f, 0, 0);
+            if (kneeR != null) kneeR.localRotation = Quaternion.Euler(Mathf.Max(0f, cl) * 42f * gait + 5f, 0, 0);
+            if (hips != null)
+            {
+                hips.localRotation = Quaternion.Euler(0, s * 7f * gait, -s * 3f * gait);
+                hips.localPosition = _hipsBase + Vector3.up * (-0.025f - Mathf.Abs(s) * 0.035f * gait);
+            }
         }
 
         /// <summary>Snaps the enemy in front of the player for the kill sequence.</summary>

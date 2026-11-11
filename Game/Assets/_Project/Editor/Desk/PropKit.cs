@@ -26,7 +26,7 @@ namespace Ward0.EditorTools
             foreach (var d in new[] { Root, TexDir, MatDir, MeshDir, Root + "/Prefabs" }) Directory.CreateDirectory(d);
             AssetDatabase.Refresh();
             EnsureMaterials();
-            Minecart(); BreakerPanel(); ValveStation(); ElevatorCarProp(); Miner(false); Miner(true); Battery(); WallTorch(); CaveIn(); SupplyCluster(); SteamVent(); GasCloud(); Stalactite();
+            Minecart(); BreakerPanel(); ValveStation(); ElevatorCarProp(); Miner(false); Miner(true); ToolKit.Build(); Battery(); WallTorch(); CaveIn(); SupplyCluster(); SteamVent(); GasCloud(); Stalactite();
             AssetDatabase.SaveAssets(); AssetDatabase.Refresh();
             Debug.Log("[Ward0] Map props built in " + Root);
         }
@@ -306,54 +306,7 @@ namespace Ward0.EditorTools
         }
 
         // ============================================================ miners
-        static void Miner(bool infected)
-        {
-            string nm = infected ? "InfectedPatrol" : "MinerFigure";
-            Start(nm);
-            string skin = infected ? "InfectedSkin" : "MinerSkin", cloth = infected ? "MinerCloth2" : "MinerCloth";
-            // legs + boots
-            foreach (float sx in new[] { -1f, 1f })
-            {
-                Cyl(cloth, new Vector3(sx * 0.11f, 0.45f, 0), 0.075f, 0.9f, null, 14, 0.01f);
-                Box("BlackPlastic", new Vector3(sx * 0.11f, 0.06f, 0.05f), new Vector3(0.14f, 0.12f, 0.26f), 0.025f);
-            }
-            var body = Obj("Body", root, new Vector3(0, 0.9f, 0));
-            // torso on a pivot so it can sway (built as separate parts)
-            Part("Torso", body.transform, MeshKit.Box(new Vector3(0.42f, 0.62f, 0.24f), 0.07f), cloth, new Vector3(0, 0.33f, 0));
-            Part("Belt", body.transform, MeshKit.Box(new Vector3(0.44f, 0.06f, 0.26f), 0.012f), "BlackPlastic", new Vector3(0, 0.04f, 0));
-            Part("StripeA", body.transform, MeshKit.Box(new Vector3(0.43f, 0.035f, 0.255f), 0.008f), "Reflective", new Vector3(0, 0.22f, 0));
-            Part("StripeB", body.transform, MeshKit.Box(new Vector3(0.43f, 0.035f, 0.255f), 0.008f), "Reflective", new Vector3(0, 0.42f, 0));
-            var head = Obj("Head", body.transform, new Vector3(0, 0.74f, 0));
-            Part("Skull", head.transform, MeshKit.Sphere(0.115f, 16, 12, 1.1f), skin, new Vector3(0, 0.1f, 0));
-            Part("Jaw", head.transform, MeshKit.Box(new Vector3(0.12f, 0.08f, 0.1f), 0.02f), skin, new Vector3(0, 0.0f, 0.03f));
-            Part("Helmet", head.transform, MeshKit.Lathe(new[] { new Vector2(0.14f, 0.2f), new Vector2(0.14f, 0.235f), new Vector2(0.1f, 0.3f), new Vector2(0.0f, 0.325f) }, 18, true), "Helmet", Vector3.zero);
-            Part("Brim", head.transform, MeshKit.Cylinder(0.17f, 0.012f, 20, 0.003f), "Helmet", new Vector3(0, 0.2f, 0.02f));
-            Part("Headlamp", head.transform, MeshKit.Cylinder(0.035f, 0.04f, 12, 0.004f), "Chrome", new Vector3(0, 0.25f, 0.14f), new Vector3(90, 0, 0));
-            var eyes = new List<Renderer>();
-            foreach (float sx in new[] { -1f, 1f }) eyes.Add(Part("Eye" + sx, head.transform, MeshKit.Sphere(0.018f, 10, 8), infected ? "EyeRed" : "EyeCalm", new Vector3(sx * 0.045f, 0.115f, 0.105f)));
-            var armL = Obj("ArmL", body.transform, new Vector3(-0.27f, 0.58f, 0)); var armR = Obj("ArmR", body.transform, new Vector3(0.27f, 0.58f, 0));
-            foreach (var a in new[] { armL, armR })
-            {
-                Part("Upper", a.transform, MeshKit.Cylinder(0.05f, 0.34f, 12, 0.008f), cloth, new Vector3(0, -0.17f, 0));
-                Part("Fore", a.transform, MeshKit.Cylinder(0.042f, 0.32f, 12, 0.008f), skin, new Vector3(0, -0.5f, 0));
-                Part("Hand", a.transform, MeshKit.Sphere(0.05f, 10, 8), skin, new Vector3(0, -0.68f, 0));
-            }
-            var go = root.gameObject;
-            if (infected)
-            {
-                var eyeLight = Obj("EyeGlow", head.transform, new Vector3(0, 0.115f, 0.15f)).AddComponent<Light>(); eyeLight.type = LightType.Point; eyeLight.color = new Color(1f, 0.1f, 0.05f); eyeLight.intensity = 1.4f; eyeLight.range = 3.5f; eyeLight.shadows = LightShadows.None;
-                var pe = go.AddComponent<PatrolEnemy>();
-                var so = new SerializedObject(pe); so.FindProperty("armL").objectReferenceValue = armL.transform; so.FindProperty("armR").objectReferenceValue = armR.transform; so.FindProperty("bodyVisual").objectReferenceValue = body.transform; so.ApplyModifiedPropertiesWithoutUndo();
-            }
-            else
-            {
-                var ms = go.AddComponent<MinerSubject>();
-                var so = new SerializedObject(ms); so.FindProperty("head").objectReferenceValue = head.transform; so.FindProperty("armL").objectReferenceValue = armL.transform; so.FindProperty("armR").objectReferenceValue = armR.transform; so.FindProperty("body").objectReferenceValue = body.transform;
-                var arr = so.FindProperty("eyes"); arr.arraySize = eyes.Count; for (int i = 0; i < eyes.Count; i++) arr.GetArrayElementAtIndex(i).objectReferenceValue = eyes[i];
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
-            Finish(nm);
-        }
+        static void Miner(bool infected) => CharacterKit.BuildMiner(infected);
 
         // ============================================================ battery
         static void Battery()
